@@ -19,6 +19,7 @@
 		A1000026229F0001 /* CaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000027229F0001 /* CaptureStore.swift */; };
 		A1000028229F0001 /* RunViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000029229F0001 /* RunViews.swift */; };
 		A100002A229F0001 /* Hairline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100002B229F0001 /* Hairline.swift */; };
+		A100002C229F0001 /* PreviewHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100002D229F0001 /* PreviewHarness.swift */; };
 		A100002E229F0001 /* HankenGrotesk-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A100002F229F0001 /* HankenGrotesk-Variable.ttf */; };
 		A1000030229F0001 /* MartianMono-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A1000031229F0001 /* MartianMono-Variable.ttf */; };
 		A1000032229F0001 /* OFL-HankenGrotesk.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1000033229F0001 /* OFL-HankenGrotesk.txt */; };
@@ -39,6 +40,7 @@
 		A1000027229F0001 /* CaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CaptureStore.swift"; sourceTree = "<group>"; };
 		A1000029229F0001 /* RunViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RunViews.swift"; sourceTree = "<group>"; };
 		A100002B229F0001 /* Hairline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hairline.swift"; sourceTree = "<group>"; };
+		A100002D229F0001 /* PreviewHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreviewHarness.swift"; sourceTree = "<group>"; };
 		A100002F229F0001 /* HankenGrotesk-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HankenGrotesk-Variable.ttf"; sourceTree = "<group>"; };
 		A1000031229F0001 /* MartianMono-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MartianMono-Variable.ttf"; sourceTree = "<group>"; };
 		A1000033229F0001 /* OFL-HankenGrotesk.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-HankenGrotesk.txt"; sourceTree = "<group>"; };
@@ -79,6 +81,7 @@
 				A100001E229F0001 /* SceneViewer.swift */,
 				A100001C229F0001 /* SplatWorldView.swift */,
 				A100002B229F0001 /* Hairline.swift */,
+				A100002D229F0001 /* PreviewHarness.swift */,
 				A1000018229F0001 /* Assets.xcassets */,
 				A1000036229F0001 /* Fonts */,
 				A1000006229F0001 /* Info.plist */,
@@ -190,6 +193,7 @@
 				A1000026229F0001 /* CaptureStore.swift in Sources */,
 				A1000028229F0001 /* RunViews.swift in Sources */,
 				A100002A229F0001 /* Hairline.swift in Sources */,
+				A100002C229F0001 /* PreviewHarness.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
