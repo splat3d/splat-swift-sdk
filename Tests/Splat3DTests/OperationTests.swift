@@ -92,6 +92,22 @@ extension SplatClientTests {
         XCTAssertEqual(scene.createdAt.timeIntervalSince(whole), 0.123, accuracy: 0.001)
     }
 
+    func testGetSceneDecodesLegacyTimestamps() async throws {
+        // APIs before 1.1.0 sent PostgREST's microseconds and +00:00 offset;
+        // they decode to millisecond precision.
+        let legacy = Fixture.completeScene
+            .replacingOccurrences(of: Fixture.createdAt, with: Fixture.legacyCreatedAt)
+            .replacingOccurrences(of: Fixture.updatedAt, with: Fixture.legacyUpdatedAt)
+        MockURLProtocol.stub(Fixture.scenePath, .json(200, legacy))
+
+        let scene = try await makeClient().getScene(id: Fixture.sceneID)
+
+        let created = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-28T12:00:00Z"))
+        let updated = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-28T12:14:03Z"))
+        XCTAssertEqual(scene.createdAt.timeIntervalSince(created), 0.123, accuracy: 0.001)
+        XCTAssertEqual(scene.updatedAt.timeIntervalSince(updated), 0.5, accuracy: 0.001)
+    }
+
     // MARK: - updateScene
 
     func testUpdateSceneSendsOnlySetFields() async throws {
@@ -409,6 +425,23 @@ extension SplatClientTests {
         XCTAssertNil(usage.limits.scenesCreated)
         XCTAssertNil(usage.limits.scenesProcessed)
         XCTAssertEqual(usage.limits.storageBytes, 1_099_511_627_776)
+    }
+
+    func testGetUsageWithoutDeprecatedFieldsReadsZero() async throws {
+        // The spec marks these four deprecated. Once an API drops them,
+        // getUsage() must still work in apps already shipped.
+        MockURLProtocol.stub("/v1/usage", .json(200, Fixture.usageWithoutDeprecatedFields))
+
+        let usage = try await makeClient().getUsage()
+
+        XCTAssertEqual(usage.scenesCreated, 3)
+        XCTAssertEqual(usage.scenesProcessed, 2)
+        XCTAssertEqual(usage.gpuSecondsUsed, 0)
+        XCTAssertEqual(usage.storageBytes, 0)
+        XCTAssertEqual(usage.limits.scenesCreated, 100)
+        XCTAssertEqual(usage.limits.scenesProcessed, 100)
+        XCTAssertEqual(usage.limits.gpuSeconds, 0)
+        XCTAssertEqual(usage.limits.storageBytes, 0)
     }
 
     func testGetUsageWithoutKeyIsUnauthorized() async throws {

@@ -81,6 +81,14 @@ final class ContractTests: XCTestCase {
         FixtureCase("cancelAccepted", Fixture.cancelAccepted, "cancelScene", 200),
         FixtureCase("usage", Fixture.usage, "getUsage", 200),
         FixtureCase("unlimitedUsage", Fixture.unlimitedUsage, "getUsage", 200),
+        // The spec still requires the four fields it marks deprecated; an API
+        // that drops them must not break getUsage().
+        FixtureCase("usageWithoutDeprecatedFields", Fixture.usageWithoutDeprecatedFields, "getUsage", 200, deviations: [
+            "missing data.gpu_seconds_used",
+            "missing data.storage_bytes",
+            "missing data.limits.gpu_seconds",
+            "missing data.limits.storage_bytes",
+        ]),
         FixtureCase("unauthorized", Fixture.unauthorized, "getUsage", 401),
         FixtureCase("sceneNotFound", Fixture.sceneNotFound, "getScene", 404),
         FixtureCase("deleteNotFound", Fixture.deleteNotFound, "deleteScene", 404),

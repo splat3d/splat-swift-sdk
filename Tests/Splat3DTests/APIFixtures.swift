@@ -29,6 +29,11 @@ enum Fixture {
     static let createdAt = "2026-09-28T12:00:00.123Z"
     static let updatedAt = "2026-09-28T12:14:03.500Z"
 
+    /// Timestamps as APIs before 1.1.0 wrote them: PostgREST's stored value,
+    /// up to six fractional digits and a `+00:00` offset.
+    static let legacyCreatedAt = "2026-09-28T12:00:00.123456+00:00"
+    static let legacyUpdatedAt = "2026-09-28T12:14:03.5+00:00"
+
     /// The list cursor: the last row's stored `created_at`,
     /// `2026-09-27T09:30:00.654321+00:00`, as unpadded base64url
     /// (encodeCursor in api/src/lib/scenes.ts). Opaque to clients.
@@ -463,6 +468,21 @@ enum Fixture {
                 "gpu_seconds": 720000,
                 "storage_bytes": 1099511627776
             }
+        },
+        "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+    }
+    """
+
+    /// GET /v1/usage → 200 without the four fields UsageData marks
+    /// `deprecated: true` (gpu_seconds_used, storage_bytes, limits.gpu_seconds,
+    /// limits.storage_bytes): the answer once an API removes them.
+    static let usageWithoutDeprecatedFields = """
+    {
+        "data": {
+            "period": "2026-10",
+            "scenes_created": 3,
+            "scenes_processed": 2,
+            "limits": { "scenes_created": 100, "scenes_processed": 100 }
         },
         "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
     }

@@ -214,4 +214,98 @@ extension SplatClientTests {
 
         XCTAssertEqual(scene.thumbnailURL?.absoluteString, "https://api-staging.example.com/v1/scenes/thumb/thumbnail")
     }
+
+    /// A complete scene with the given thumbnail keys, read by a client on
+    /// `https://api-staging.example.com`.
+    func stagingScene(id: String, thumbnailR2Key: String?, thumbnailURL: String?) async throws -> SplatScene {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let staging = try XCTUnwrap(URL(string: "https://api-staging.example.com"))
+        let client = SplatClient(apiKey: "s3d_test_key_12345", baseURL: staging, session: URLSession(configuration: config))
+
+        // A JSON string literal, or null.
+        func literal(_ value: String?) -> String {
+            value.map { "\"\($0)\"" } ?? "null"
+        }
+        MockURLProtocol.stub("/v1/scenes/\(id)", .json(200, """
+        {
+            "data": {
+                "id": "\(id)",
+                "title": null,
+                "address": null,
+                "status": "complete",
+                "is_public": false,
+                "processing_stage": null,
+                "processing_pct": null,
+                "num_gaussians": null,
+                "thumbnail_r2_key": \(literal(thumbnailR2Key)),
+                "thumbnail_url": \(literal(thumbnailURL)),
+                "created_at": "\(Fixture.createdAt)",
+                "updated_at": "\(Fixture.updatedAt)"
+            },
+            "meta": { "request_id": "\(Fixture.requestID)" }
+        }
+        """))
+
+        return try await client.getScene(id: id)
+    }
+
+    func testThumbnailURLAloneMakesALink() async throws {
+        // thumbnail_url is the documented field; thumbnail_r2_key is a
+        // storage key an API may stop sending.
+        let scene = try await stagingScene(
+            id: "url-only",
+            thumbnailR2Key: nil,
+            thumbnailURL: "https://api-staging.example.com/v1/scenes/url-only/thumbnail"
+        )
+
+        XCTAssertEqual(scene.thumbnailURL?.absoluteString, "https://api-staging.example.com/v1/scenes/url-only/thumbnail")
+    }
+
+    func testAnAbsoluteThumbnailURLWins() async throws {
+        // The API sends `<API_BASE_URL>/v1/scenes/<id>/thumbnail`
+        // (toPublicScene in api/src/lib/scenes.ts): the server's answer.
+        let scene = try await stagingScene(
+            id: "absolute",
+            thumbnailR2Key: "tours/absolute/thumbnail.png",
+            thumbnailURL: "https://thumbs.example.com/v1/scenes/absolute/thumbnail"
+        )
+
+        XCTAssertEqual(scene.thumbnailURL?.absoluteString, "https://thumbs.example.com/v1/scenes/absolute/thumbnail")
+    }
+
+    func testARelativeThumbnailURLUsesTheClientsBaseURL() async throws {
+        let scene = try await stagingScene(
+            id: "relative",
+            thumbnailR2Key: nil,
+            thumbnailURL: "/v1/scenes/relative/thumbnail"
+        )
+
+        XCTAssertEqual(scene.thumbnailURL?.absoluteString, "https://api-staging.example.com/v1/scenes/relative/thumbnail")
+    }
+
+    func testNoThumbnailKeysMeansNoThumbnailURL() async throws {
+        let scene = try await stagingScene(id: "none", thumbnailR2Key: nil, thumbnailURL: nil)
+
+        XCTAssertNil(scene.thumbnailURL)
+    }
+
+    func testEncodingKeepsTheServersThumbnailURL() throws {
+        // Decoded outside SplatClient, a scene would otherwise point its
+        // thumbnail at production.
+        let json = """
+            {"id": "staged", "status": "complete", "is_public": false, "thumbnail_r2_key": null,
+             "thumbnail_url": "https://api-staging.example.com/v1/scenes/staged/thumbnail",
+             "created_at": "2026-09-28T12:00:00Z", "updated_at": "2026-09-28T12:00:00Z"}
+            """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        let scene = try decoder.decode(SplatScene.self, from: Data(json.utf8))
+        let again = try decoder.decode(SplatScene.self, from: encoder.encode(scene))
+
+        XCTAssertEqual(again.thumbnailURL?.absoluteString, "https://api-staging.example.com/v1/scenes/staged/thumbnail")
+    }
 }
