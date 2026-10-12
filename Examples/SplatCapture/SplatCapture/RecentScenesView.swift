@@ -143,8 +143,9 @@ struct RecentScenesView: View {
     }
 
     private static let listCall = """
-        let page = try await client.listScenePage(limit: 100)
-        try await client.deleteScene(id: scene.id)
+        let page = try await client
+            .listScenePage(limit: 100)
+        try await client.deleteScene(id: id)
         """
 }
 
@@ -171,7 +172,7 @@ private struct SceneRow: View {
                 Text(details)
                     .typeStyle(.code)
                     .foregroundStyle(Palette.graphite)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
 
             Spacer(minLength: 8)

@@ -54,7 +54,9 @@ struct PreviewHarness: View {
     // MARK: Made-up data
 
     private static let sceneID = "a1b2c3d4e5f6"
-    private static let created = Date(timeIntervalSince1970: 1_791_900_000)
+    private static let hour: TimeInterval = 60 * 60
+    /// Relative to now, so ages read the same on any day.
+    private static let created = Date().addingTimeInterval(-3 * hour)
     private static let megabyte: Int64 = 1_000_000
 
     private static let scene = SplatScene(

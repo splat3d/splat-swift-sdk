@@ -180,6 +180,10 @@ final class CaptureModel: ObservableObject {
 
     private let haptics = UIImpactFeedbackGenerator(style: .medium)
 
+    #if DEBUG
+    private var isPreview = false
+    #endif
+
     private static let posesPerTick = 5
     private static let uploadPollInterval: Duration = .milliseconds(250)
     private static let trackingPollInterval: Duration = .milliseconds(500)
@@ -234,6 +238,12 @@ final class CaptureModel: ObservableObject {
     /// The app is in front again: Settings may have changed camera access,
     /// and a run iOS stopped in the background picks up.
     func appBecameActive() {
+        #if DEBUG
+        // A preview keeps the camera access it was given.
+        guard !isPreview else {
+            return
+        }
+        #endif
         cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
         guard case .paused(let paused) = state, paused.cause == .backgrounded else {
             return
@@ -1091,6 +1101,7 @@ extension CaptureModel {
             transfers: TransferWatcher(),
             state: state
         )
+        model.isPreview = true
         if let scanning = setup.scanning {
             model.poseCount = scanning.poses
             model.frameCount = scanning.frames

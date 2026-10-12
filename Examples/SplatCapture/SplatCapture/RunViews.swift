@@ -9,9 +9,11 @@ import Splat3D
 /// Where to add credits: the billing page of the Splat3D dashboard.
 let billingURL = URL(string: "https://splat-3d.com/dashboard/settings/billing")!
 
-/// A screen: eyebrow, headline, lead, then its content, on paper.
+/// A screen: eyebrow (with the scene's ID once it has one), headline, lead,
+/// then its content, on paper.
 struct Screen<Content: View>: View {
     let eyebrow: String
+    var sceneID: String?
     let title: String
     let lead: String?
     @ViewBuilder let content: Content
@@ -20,7 +22,16 @@ struct Screen<Content: View>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
-                    MonoLabel(eyebrow)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        MonoLabel(sceneID == nil ? eyebrow : "\(eyebrow) · scene")
+                        // IDs are case sensitive: not in the label's capitals.
+                        if let sceneID {
+                            Text(sceneID)
+                                .typeStyle(.code)
+                                .foregroundStyle(Palette.graphite)
+                                .textSelection(.enabled)
+                        }
+                    }
                     Text(title)
                         .typeStyle(.display)
                         .foregroundStyle(Palette.ink)
@@ -63,23 +74,18 @@ struct HairlineProgress: View {
     }
 }
 
-/// "Scene a1b2c3d4e5f6", or a stand-in before the scene exists.
-private func sceneLabel(_ prefix: String, _ sceneID: String?) -> String {
-    guard let sceneID else {
-        return prefix
-    }
-    return "\(prefix) · scene \(sceneID)"
-}
+// Snippets keep to about 40 columns, the width of a phone in portrait.
 
 /// The catch ladder of a reference integration.
 private let recoveryCall = """
     do {
-        scene = try await client.createAndProcess(videoURL: video, preset: .fast,
-                                                  arkitPoses: poses, lidarPoints: points)
-    } catch SplatError.interrupted(let interruption) {
-        scene = try await client.resume(interruption)   // never pays twice
-    } catch SplatError.processingFailed(let reason) {
-        // Final: the server failed the scene and refunds it.
+        scene = try await client
+            .createAndProcess(videoURL: url)
+    } catch SplatError.interrupted(let stop) {
+        // Never pays twice.
+        scene = try await client.resume(stop)
+    } catch SplatError.processingFailed {
+        // Final. The server refunds it.
     }
     """
 
@@ -94,7 +100,7 @@ struct RunningView: View {
     private static let previewHeight: CGFloat = 200
 
     var body: some View {
-        Screen(eyebrow: sceneLabel("Running", progress.sceneID), title: title, lead: lead) {
+        Screen(eyebrow: "Running", sceneID: progress.sceneID, title: title, lead: lead) {
             Panel {
                 StepRow(name: "Save capture", state: state(of: .saving), detail: progress.step > .saving ? "Done" : "")
                 Rule()
@@ -134,12 +140,15 @@ struct RunningView: View {
             }
 
             APICallBlock(code: """
-                let scene = try await client.createAndProcess(
-                    videoURL: capture.videoURL, preset: .fast,
-                    arkitPoses: capture.poses, lidarPoints: capture.lidarPoints
-                ) { status, percent in
-                    print(status.rawValue, percent ?? 0)
-                }
+                let scene = try await client
+                    .createAndProcess(
+                        videoURL: capture.videoURL,
+                        preset: .fast,
+                        arkitPoses: capture.poses,
+                        lidarPoints: capture.lidarPoints
+                    ) { status, percent in
+                        print(status, percent ?? 0)
+                    }
                 """)
         }
     }
@@ -284,7 +293,7 @@ struct PausedView: View {
     @State private var confirmingDiscard = false
 
     var body: some View {
-        Screen(eyebrow: sceneLabel("Paused", paused.sceneID), title: paused.title, lead: paused.detail) {
+        Screen(eyebrow: "Paused", sceneID: paused.sceneID, title: paused.title, lead: paused.detail) {
             Panel {
                 FactRow(label: "Stopped at") {
                     Text(stoppedAt)
@@ -347,9 +356,11 @@ struct PausedView: View {
     }
 
     private static let relaunchCall = """
-        // After a relaunch, with the ID onSceneCreated passed and the saved capture:
-        scene = try await client.resume(sceneID: savedID, preset: .fast,
-                                        arkitPoses: saved.poses, lidarPoints: saved.points)
+        // After a relaunch, from what you saved:
+        scene = try await client.resume(
+            sceneID: savedID, preset: .fast,
+            arkitPoses: saved.poses,
+            lidarPoints: saved.points)
         """
 }
 
@@ -362,7 +373,7 @@ struct FailedView: View {
     let onDiscard: () -> Void
 
     var body: some View {
-        Screen(eyebrow: sceneLabel("Failed", failed.sceneID), title: failed.title, lead: failed.detail) {
+        Screen(eyebrow: "Failed", sceneID: failed.sceneID, title: failed.title, lead: failed.detail) {
             if let charges = failed.charges {
                 Panel {
                     FactRow(label: "Charges") {
@@ -420,7 +431,7 @@ struct CompleteView: View {
     private static let thumbnailAspect: CGFloat = 4 / 3
 
     var body: some View {
-        Screen(eyebrow: sceneLabel("Ready", scene.id), title: "Your scene is ready", lead: scene.displayTitle) {
+        Screen(eyebrow: "Ready", sceneID: scene.id, title: "Your scene is ready", lead: scene.displayTitle) {
             preview
 
             Panel {
@@ -472,9 +483,11 @@ struct CompleteView: View {
             }
 
             APICallBlock(code: """
-                let spz = try await client.downloadScene(id: scene.id, format: .spz)
-                let jpeg = try await client.getSceneThumbnail(id: scene.id)
-                try await client.deleteScene(id: scene.id)
+                let spz = try await client
+                    .downloadScene(id: id, format: .spz)
+                let image = try await client
+                    .getSceneThumbnail(id: id)
+                try await client.deleteScene(id: id)
                 """)
         }
     }
