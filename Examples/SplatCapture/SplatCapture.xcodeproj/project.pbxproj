@@ -15,6 +15,11 @@
 		A100001D229F0001 /* SceneViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001E229F0001 /* SceneViewer.swift */; };
 		A100001F229F0001 /* RecentScenesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020229F0001 /* RecentScenesView.swift */; };
 		A1000021229F0001 /* SplatKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1000023229F0001 /* SplatKit */; };
+		A100002A229F0001 /* Hairline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100002B229F0001 /* Hairline.swift */; };
+		A100002E229F0001 /* HankenGrotesk-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A100002F229F0001 /* HankenGrotesk-Variable.ttf */; };
+		A1000030229F0001 /* MartianMono-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A1000031229F0001 /* MartianMono-Variable.ttf */; };
+		A1000032229F0001 /* OFL-HankenGrotesk.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1000033229F0001 /* OFL-HankenGrotesk.txt */; };
+		A1000034229F0001 /* OFL-MartianMono.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1000035229F0001 /* OFL-MartianMono.txt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +32,11 @@
 		A100001C229F0001 /* SplatWorldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatWorldView.swift; sourceTree = "<group>"; };
 		A100001E229F0001 /* SceneViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneViewer.swift; sourceTree = "<group>"; };
 		A1000020229F0001 /* RecentScenesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentScenesView.swift; sourceTree = "<group>"; };
+		A100002B229F0001 /* Hairline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hairline.swift"; sourceTree = "<group>"; };
+		A100002F229F0001 /* HankenGrotesk-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HankenGrotesk-Variable.ttf"; sourceTree = "<group>"; };
+		A1000031229F0001 /* MartianMono-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MartianMono-Variable.ttf"; sourceTree = "<group>"; };
+		A1000033229F0001 /* OFL-HankenGrotesk.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-HankenGrotesk.txt"; sourceTree = "<group>"; };
+		A1000035229F0001 /* OFL-MartianMono.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-MartianMono.txt"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,10 +69,23 @@
 				A1000020229F0001 /* RecentScenesView.swift */,
 				A100001E229F0001 /* SceneViewer.swift */,
 				A100001C229F0001 /* SplatWorldView.swift */,
+				A100002B229F0001 /* Hairline.swift */,
 				A1000018229F0001 /* Assets.xcassets */,
+				A1000036229F0001 /* Fonts */,
 				A1000006229F0001 /* Info.plist */,
 			);
 			path = SplatCapture;
+			sourceTree = "<group>";
+		};
+		A1000036229F0001 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				A100002F229F0001 /* HankenGrotesk-Variable.ttf */,
+				A1000031229F0001 /* MartianMono-Variable.ttf */,
+				A1000033229F0001 /* OFL-HankenGrotesk.txt */,
+				A1000035229F0001 /* OFL-MartianMono.txt */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		A100000A229F0001 /* Products */ = {
@@ -135,6 +158,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000017229F0001 /* Assets.xcassets in Resources */,
+				A100002E229F0001 /* HankenGrotesk-Variable.ttf in Resources */,
+				A1000030229F0001 /* MartianMono-Variable.ttf in Resources */,
+				A1000032229F0001 /* OFL-HankenGrotesk.txt in Resources */,
+				A1000034229F0001 /* OFL-MartianMono.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -150,6 +177,7 @@
 				A100001F229F0001 /* RecentScenesView.swift in Sources */,
 				A100001D229F0001 /* SceneViewer.swift in Sources */,
 				A100001B229F0001 /* SplatWorldView.swift in Sources */,
+				A100002A229F0001 /* Hairline.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -211,6 +239,7 @@
 			baseConfigurationReference = A100001A229F0001 /* SplatCapture.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -219,7 +248,6 @@
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = "arkit lidar";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait";
@@ -241,6 +269,7 @@
 			baseConfigurationReference = A100001A229F0001 /* SplatCapture.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -249,7 +278,6 @@
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = "arkit lidar";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait";
