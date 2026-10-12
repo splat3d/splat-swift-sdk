@@ -239,6 +239,18 @@ All notable changes to Splat3D. Versions follow [Semantic Versioning](https://se
   deprecated by the API.
 - `cancelScene(id:)` is documented as refusing only a finished scene. It no
   longer claims the preview stages can't be cancelled.
+- `SplatScene.thumbnailURL` is the API's `thumbnail_url` when that is an
+  absolute URL. Otherwise, when the scene has `thumbnail_url` or
+  `thumbnail_r2_key`, it is `/v1/scenes/{id}/thumbnail` on the client's base
+  URL. It used to follow `thumbnail_r2_key` alone, a storage key. Encoding a
+  scene writes `thumbnail_url`.
+- `deleteScene(id:)` is documented as API 1.3.0's soft delete: it cancels an
+  unfinished scene under the cancel refund rules, and a 409 or 503 means try
+  again. The SDK never retries it.
+- `waitForScene(id:onProgress:)` is documented as tolerating a short run of
+  401 or 404 for older APIs; the API now answers a database failure with 503.
+- `SplatScene.viewerURL`'s documentation: list items carry `viewer_url` since
+  API 1.1.0, so only older APIs' list items get a built link.
 
 ### Deprecated
 
@@ -258,12 +270,16 @@ All notable changes to Splat3D. Versions follow [Semantic Versioning](https://se
   404; they now use `/tour/{id}`.
 - A complete scene whose response has `viewer_url: null`, because it has no
   model to show, got a made-up `/tour/{id}` link. Now `viewerURL` is `nil`;
-  the link is built only for responses without the field, such as list items.
+  the link is built only for responses without the field, such as list items
+  from APIs before 1.1.0.
 - `preview_ready` decodes as an in-progress status instead of failing.
 - `SplatScene.isProcessing` is true for every non-terminal status. It was
   false for `estimating_poses` and the `preview_*` stages the pipeline writes.
 - `SplatScene.downloadURL`'s documentation: the URL needs the API key, and
-  serves SOG unless `?format=ply` is passed.
+  serves the API's default format unless `?format=` names one.
+- `getUsage()` decodes an answer without `gpu_seconds_used`, `storage_bytes`,
+  `limits.gpu_seconds` or `limits.storage_bytes`, which API 1.2.0 deprecated:
+  a missing one reads 0. It used to throw.
 
 ## 0.1.0
 

@@ -174,17 +174,18 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
 
     /// Viewer URL for the scene on splat-3d.com, as the server sends it:
     /// `nil` when it has no model to show, even for a complete scene.
-    /// A response without the field (a list item, or an older server) gets
-    /// the `/tour/` link for a complete scene.
+    /// A response without the field (a list item from an API before 1.1.0,
+    /// or an older server) gets the `/tour/` link for a complete scene.
     public let viewerURL: URL?
 
     /// API URL for the scene's 3D model, once processing is complete.
     ///
-    /// It serves SOG by default, PLY with `?format=ply` and SPZ with
-    /// `?format=spz`. It requires your
-    /// API key as a Bearer token, so a browser, web view or `URLSession.shared`
-    /// gets a 401 from it: fetch the model with
-    /// ``SplatClient/downloadScene(id:format:)``.
+    /// Without `?format=` it serves the API's default format; add
+    /// `?format=sog`, `?format=ply` or `?format=spz` to pick one. It requires
+    /// your API key as a Bearer token, so a browser, web view or
+    /// `URLSession.shared` gets a 401 from it: fetch the model with
+    /// ``SplatClient/downloadScene(id:format:)``, which always names a format
+    /// (`.sog` unless you pass another).
     public let downloadURL: URL?
 
     /// Format of the processed model, e.g. ``ModelFormat/sog``.
@@ -221,6 +222,7 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         case processingPct = "processing_pct"
         case numGaussians = "num_gaussians"
         case thumbnailR2Key = "thumbnail_r2_key"
+        case thumbnailURLKey = "thumbnail_url"
         case processingError = "processing_error"
         case viewerURLKey = "viewer_url"
         case downloadURL = "download_url"
@@ -229,7 +231,8 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         case updatedAt = "updated_at"
     }
 
-    // We need a custom initializer because thumbnailURL is derived from thumbnail_r2_key
+    // We need a custom initializer because thumbnailURL is derived from
+    // thumbnail_url or thumbnail_r2_key
     private let thumbnailR2Key: String?
 
     public init(from decoder: Decoder) throws {
@@ -249,19 +252,21 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
 
-        // Build thumbnail URL from the scene ID (API route, not R2 key), on
-        // the deployment the scene came from.
-        if thumbnailR2Key != nil {
-            let apiBase = decoder.userInfo[.splatBaseURL] as? URL ?? SplatScene.productionAPI
-            thumbnailURL = apiBase.appendingPathComponent("v1/scenes/\(id)/thumbnail")
-        } else {
-            thumbnailURL = nil
-        }
+        // The thumbnail link: thumbnail_url when the server sent an absolute
+        // one, else the API route on the deployment the scene came from.
+        let servedThumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnailURLKey)
+        let apiBase = decoder.userInfo[.splatBaseURL] as? URL ?? SplatScene.productionAPI
+        thumbnailURL = SplatScene.thumbnailLink(
+            id: id,
+            served: servedThumbnail,
+            r2Key: thumbnailR2Key,
+            apiBase: apiBase
+        )
 
         // A viewer_url the response carries is the server's answer, null
         // included: there is no model to show. Only a response without the
-        // key (list items, and servers from before viewer_url) gets a link
-        // built here.
+        // key (list items from APIs before 1.1.0, and servers from before
+        // viewer_url) gets a link built here.
         if container.contains(.viewerURLKey) {
             viewerURL = try container.decodeIfPresent(URL.self, forKey: .viewerURLKey)
         } else {
@@ -280,6 +285,9 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         try container.encodeIfPresent(processingPct, forKey: .processingPct)
         try container.encodeIfPresent(numGaussians, forKey: .numGaussians)
         try container.encodeIfPresent(thumbnailR2Key, forKey: .thumbnailR2Key)
+        // Written, as the string decoding reads, so decoding it again keeps
+        // the link rather than building a production one.
+        try container.encodeIfPresent(thumbnailURL?.absoluteString, forKey: .thumbnailURLKey)
         try container.encodeIfPresent(processingError, forKey: .processingError)
         // Written even when nil, so decoding it again doesn't build a link.
         try container.encode(viewerURL, forKey: .viewerURLKey)
@@ -356,6 +364,26 @@ extension SplatScene {
 
     /// Thumbnail host when a scene is decoded outside ``SplatClient``.
     fileprivate static let productionAPI = URL(string: "https://api.splat-3d.com")!
+
+    /// The thumbnail link, or `nil` when neither key says there is one.
+    ///
+    /// An absolute `thumbnail_url` is used as sent, e.g.
+    /// `https://api.splat-3d.com/v1/scenes/<id>/thumbnail` (the API builds it
+    /// from its own base URL). Otherwise the same route on `apiBase`.
+    fileprivate static func thumbnailLink(id: String, served: String?, r2Key: String?, apiBase: URL) -> URL? {
+        if let served,
+           let parts = URLComponents(string: served),
+           parts.scheme != nil,
+           parts.host?.isEmpty == false,
+           let url = parts.url {
+            return url
+        }
+
+        guard served != nil || r2Key != nil else {
+            return nil
+        }
+        return apiBase.appendingPathComponent("v1/scenes/\(id)/thumbnail")
+    }
 }
 
 // MARK: - Viewer URL
@@ -365,8 +393,8 @@ extension SplatScene {
     /// retired and now returns 404.
     private static let viewerBase = "https://splat-3d.com/tour/"
 
-    /// Viewer link for responses without `viewer_url`: list items, and
-    /// servers from before it.
+    /// Viewer link for responses without `viewer_url`: list items from APIs
+    /// before 1.1.0, and servers from before it.
     private static func fallbackViewerURL(id: String, status: SceneStatus) -> URL? {
         guard status == .complete else {
             return nil

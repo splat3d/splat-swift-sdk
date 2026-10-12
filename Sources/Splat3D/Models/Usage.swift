@@ -51,6 +51,18 @@ public struct Usage: Decodable, Sendable, Equatable {
         case limits
     }
 
+    // The deprecated fields read 0 when absent, so getUsage() keeps working
+    // once the API removes them.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        period = try container.decode(String.self, forKey: .period)
+        scenesCreated = try container.decode(Int.self, forKey: .scenesCreated)
+        scenesProcessed = try container.decode(Int.self, forKey: .scenesProcessed)
+        gpuSecondsUsed = try container.decodeIfPresent(Int.self, forKey: .gpuSecondsUsed) ?? 0
+        storageBytes = try container.decodeIfPresent(Int64.self, forKey: .storageBytes) ?? 0
+        limits = try container.decode(Limits.self, forKey: .limits)
+    }
+
     // MARK: - Limits
 
     /// Plan limits that ``Usage`` counts against.
@@ -83,6 +95,15 @@ public struct Usage: Decodable, Sendable, Equatable {
             case scenesProcessed = "scenes_processed"
             case gpuSeconds = "gpu_seconds"
             case storageBytes = "storage_bytes"
+        }
+
+        // As in Usage: the deprecated limits read 0 when absent.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            scenesCreated = try container.decodeIfPresent(Int.self, forKey: .scenesCreated)
+            scenesProcessed = try container.decodeIfPresent(Int.self, forKey: .scenesProcessed)
+            gpuSeconds = try container.decodeIfPresent(Int.self, forKey: .gpuSeconds) ?? 0
+            storageBytes = try container.decodeIfPresent(Int64.self, forKey: .storageBytes) ?? 0
         }
     }
 }

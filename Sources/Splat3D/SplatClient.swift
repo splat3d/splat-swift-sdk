@@ -628,11 +628,19 @@ public final class SplatClient: Sendable {
 
     /// Delete a scene and all associated files.
     ///
-    /// This permanently removes the scene, its video, 3D model, and thumbnail.
-    /// This action cannot be undone.
+    /// The delete is soft: the API answers 404 for the scene from then on, and
+    /// removes its video, 3D model and thumbnail 24 to 48 hours later. It
+    /// can't be undone. A scene still uploading or processing is cancelled
+    /// first, under the API's cancel refund rules.
+    ///
+    /// The SDK never retries a delete. On a 409 or 503, call it again.
     ///
     /// - Parameter id: The scene ID to delete.
-    /// - Throws: ``SplatError/notFound(_:)`` if the scene doesn't exist.
+    /// - Throws: ``SplatError/notFound(_:)`` if the scene doesn't exist, is
+    ///   already deleted, or belongs to another account.
+    ///   ``SplatError/requestFailed(_:)`` with code `conflict` (409) if the
+    ///   scene's status changed while it was being deleted, or
+    ///   `service_unavailable` (503): try again.
     public func deleteScene(id: String) async throws {
         try await api.requestVoid(path: APIPath.scene(id), method: .delete)
     }
@@ -642,10 +650,11 @@ public final class SplatClient: Sendable {
     /// Poll a scene until processing finishes.
     ///
     /// Use it to pick up a launched scene, e.g. after an app restart, without
-    /// paying for another job. Network failures, 5xx and rate limits don't
-    /// end the wait, since they say nothing about the job; once the scene has
-    /// been read, neither does a short run of 401 or 404, which the API also
-    /// returns when its database blips. After the deadline it looks once more.
+    /// paying for another job. Network failures, 5xx (including the 503 the
+    /// API answers when its database fails) and rate limits don't end the
+    /// wait, since they say nothing about the job. Once the scene has been
+    /// read, neither does a short run of 401 or 404, which older APIs
+    /// answered a database failure with. After the deadline it looks once more.
     ///
     /// - Parameters:
     ///   - id: The scene ID.
@@ -701,7 +710,7 @@ public final class SplatClient: Sendable {
     ///   refund a job that had started.
     /// - ``SplatError/notFound(_:)``: the scene was deleted. A 404 while
     ///   waiting counts only once a replay of the launch also finds no scene,
-    ///   since the API answers a failed read with 404 too.
+    ///   since older APIs answered a failed read with 404 too.
     /// - ``SplatError/uploadFailed(_:)`` with a `URLError` such as
     ///   `.fileDoesNotExist` or `.zeroByteResource`: the capture is missing
     ///   or empty, so nothing was sent. It is checked before the scene is
@@ -893,7 +902,7 @@ public final class SplatClient: Sendable {
         } catch let error as SplatError where error.isFinal {
             throw error
         } catch SplatError.notFound(let refusal) {
-            // The API answers a failed scene read with 404 too, so a read's
+            // Older APIs answered a failed scene read with 404 too, so a read's
             // 404 ends the run only once a launch replay confirms it.
             guard await isGone(run) else {
                 throw stopped(run, at: phase, by: SplatError.notFound(refusal))

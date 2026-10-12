@@ -166,7 +166,7 @@ Any other error after the scene exists ends the run, and no resume can continue 
 |---|---|
 | `SplatError.processingFailed` | The server failed the scene, including a launch it failed, and refunds it. Rarely, a job the stale-job sweep failed still completes, so check `getScene` before starting over. |
 | `SplatError.cancelled` | The scene was cancelled. The server doesn't refund a job that had started. |
-| `SplatError.notFound` | The scene was deleted. A 404 while waiting counts only once a replay of the launch also finds no scene, since the API answers a failed read with 404 too. |
+| `SplatError.notFound` | The scene was deleted. A 404 while waiting counts only once a replay of the launch also finds no scene, since older APIs answered a failed read with 404 too. |
 | `SplatError.uploadFailed` with `.fileDoesNotExist` or `.zeroByteResource` | The capture is missing or empty, so nothing was sent. It's checked before the scene is created too. |
 | `SplatError.requestFailed` with a 4xx | Storage refused the upload URL (403 once it expires, after an hour), or the API refused the launch request itself (400). |
 
