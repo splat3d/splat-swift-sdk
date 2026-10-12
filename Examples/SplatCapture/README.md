@@ -1,9 +1,12 @@
 # SplatCapture Example App
 
-A minimal SwiftUI app demonstrating the [Splat3D](../../) SDK. Records video
-with ARKit LiDAR poses and uploads to the Splat API for 3D Gaussian Splat
-processing, then shows the result natively with
-[SplatKit](https://github.com/Xget7/splatkit-ios).
+The reference app for the [Splat3D](../../) SDK. It records video with ARKit
+LiDAR poses, uploads it to the Splat3D API for 3D Gaussian splat processing,
+follows the job, and shows the result natively with
+[SplatKit](https://github.com/Xget7/splatkit-ios). It covers the whole
+lifecycle (capture, upload, progress, thumbnail, view, delete) and every way
+a run can stop, including resuming after the app is killed without paying
+twice.
 
 ## Setup
 
@@ -20,8 +23,11 @@ processing, then shows the result natively with
    # then set SPLAT_API_KEY = s3d_... in Secrets.xcconfig
    ```
    Never put a key in source files: this repository is public, and CI fails on
-   anything that looks like one. Without a key, the app says so when you tap
-   **Start Scan** or open **Recent Scenes**.
+   anything that looks like one. Without a key, the start screen says so and
+   **Start capture** stays off.
+
+   A build carries the key in its Info.plist, so anyone with the app can read
+   it. For a TestFlight build, use a key of its own that you can revoke.
 4. Select your physical iPhone as the run destination and hit **Run**
 
 ### Getting an API Key
@@ -38,7 +44,8 @@ processing, then shows the result natively with
 - iOS 17.0+. SplatKit requires it; the Splat3D SDK itself still supports iOS 16
 - Camera and motion permissions are requested on first launch
 
-The app will show an error if you try to run on a device without LiDAR.
+On a device without LiDAR, the start screen says capture needs it and keeps
+**Start capture** off. Scenes and the viewer still work.
 
 **View in 3D** draws with Metal on Apple GPU family 7: A14, M1 or newer, on a
 physical device. The app goes by SplatKit's `SplatMetalView.isAvailable`,
@@ -49,20 +56,62 @@ the scene and says it can't draw it.
 ## Usage
 
 1. Pick a preset. **Fast** is the default: the quickest and cheapest, good for
-   testing. The choice is remembered.
-2. Tap **Start Scan** — the camera view opens with a gold mesh overlay showing
-   surfaces detected by the LiDAR scanner
+   testing. The choice is remembered. The start screen also checks LiDAR,
+   camera access and the API key.
+2. Tap **Start capture**. The camera view opens with a blue mesh overlay
+   showing surfaces detected by the LiDAR scanner
 3. Slowly walk around the scene you want to capture (15–60 seconds is ideal)
-4. Watch the **pose counter** and **frame counter** in the top-right, and the
-   **tracking quality** indicator above the stop button
-5. Tap **Stop & Upload** when done
-6. The app uploads the video + ARKit poses, triggers processing, and polls for
-   completion with a progress bar
-7. When done, tap **View in 3D** to explore it in the app, or **Open in
-   Safari** for the web viewer
+4. Watch the **pose** and **frame** counters in the top-right, and the
+   **tracking** status above the stop button
+5. Tap **Stop and upload** when done
+6. The app saves the capture, uploads the video and ARKit poses, launches
+   processing and follows it step by step: upload (with bytes sent), launch,
+   process (the API's stage and percent), and the scene's thumbnail as soon as
+   the pipeline makes one
+7. When done, tap **View in 3D** to explore it in the app, **Open on
+   splat-3d.com** for the web viewer, or **Delete scene**
 
-To skip capturing, tap **Recent Scenes** on the start screen: it lists the
-account's latest completed scenes, each with **View in 3D**.
+**Scenes** (top right) lists the account's latest scenes with their status.
+A complete one opens in 3D. Swipe or long-press a row to delete it.
+
+Each screen ends with the SDK call behind it, under **The same thing, in
+Swift**, with a Copy button.
+
+## When a run stops
+
+The app reads every error from `createAndProcess` the way the SDK's README
+describes ("Continuing after a failure"), and never ends in a spinner or a
+raw error:
+
+| What happened | What the app shows | Next |
+|---|---|---|
+| Network lost mid-upload or mid-launch | **Connection lost**, what was charged (nothing, or at most once) | **Resume**: `client.resume(interruption)` |
+| App left mid-run | It asks iOS for background time; when that runs out, the run pauses | Resumes by itself when the app is back |
+| App killed mid-run | On the next launch, **A capture is waiting** | **Resume**: `client.resume(sceneID:preset:arkitPoses:lidarPoints:)` with the saved capture |
+| App killed mid-upload | Resume gets `source_missing`: **The upload didn't finish**, nothing charged | **Upload again**: a new scene from the saved capture; the old one is deleted |
+| Not enough credits | **Not enough credits**, with the API's message | **Add credits** (dashboard), then **Resume** |
+| Too many scenes processing, monthly limit | The API's message | **Resume** later |
+| Job failed or cancelled on the server | **Processing failed** (refunded) or **Scene cancelled** | **Process again** (a new, charged scene) or discard |
+| Unknown status | The step reads **Working**, with the raw status beside it | Keeps waiting |
+| No LiDAR, camera off, no key | Said on the start screen, with **Open Settings** for the camera | Scenes still work |
+
+So that a killed app can resume, `CaptureStore.swift` keeps the capture in
+Application Support (out of iCloud backups) from before the scene is created
+until it completes or you discard it: the video, the poses and LiDAR points
+the launch resends, the preset, and the scene ID from `onSceneCreated`.
+
+### Previewing states
+
+Debug builds take a `-SplatPreviewState` launch argument that shows one
+screen in a fixed state, with made-up data and no API client, so every state
+can be checked on the Simulator, which can't run ARKit. `PreviewHarness.swift`
+lists them:
+
+```sh
+xcrun simctl launch booted com.splat3d.SplatCapture -SplatPreviewState paused-credits
+```
+
+Release builds don't contain it.
 
 ## Viewing in 3D
 
@@ -73,7 +122,8 @@ showing the bytes as they arrive, then hands the file to SplatKit.
 - **Look**: drag to turn on the spot; hold the arrows to move forward or back
 - **Flip**: turns the picture upside down, see below
 - **Reset** (the target icon): back to the starting view
-- The line at the top is SplatKit's frame rate and splats drawn
+- In Debug builds, the line at the top is SplatKit's frame rate and splats
+  drawn
 
 What can go wrong, and what the app says:
 
@@ -112,20 +162,55 @@ This app demonstrates these Splat3D APIs:
   preview.
 - **`SplatClient.createAndProcess()`** — the high-level convenience method that
   creates a scene, uploads the video, triggers processing, and polls until
-  complete.
+  complete. Its `onSceneCreated` callback saves the scene ID; its progress
+  callback drives the steps.
+- **`SplatClient.resume(_:)`** and **`resume(sceneID:preset:arkitPoses:lidarPoints:)`**
+  — continue an interrupted run in the same session, or after a relaunch,
+  without paying twice. `CaptureModel.swift` reads each error into paused
+  (Resume) or failed (what next).
 - **`ARKitPose`** — the pose format sent to the API. Each pose includes the 4x4
   camera transform, 3x3 intrinsics, image dimensions, and a filename.
-- **`SplatClient.listScenePage()`** — the Recent Scenes list.
-- **`SplatClient.getSceneThumbnail(id:)`** — the list's thumbnails. It sends
-  the API key, which a private scene's thumbnail needs, so `AsyncImage` can't
-  load them. The app keeps the decoded images in memory while the list is open.
+- **`SplatClient.listScenePage()`** — the Scenes list.
+- **`SplatClient.getSceneThumbnail(id:)`** — the list's thumbnails, and the
+  progress and complete screens' preview. It sends the API key, which a
+  private scene's thumbnail needs, so `AsyncImage` can't load them. The list
+  keeps the decoded images in memory while it is open.
+- **`SplatClient.deleteScene(id:)`** — Delete, on the complete screen and in
+  the list.
 - **`SplatClient.downloadScene(id:format:)`** — fetches the SPZ with
   `format: .spz`. It gives the client a `URLSession` whose delegate watches
-  the download's bytes.
+  the download's bytes, as the capture's client does for the upload.
 
-See `ContentView.swift` for the full integration — key sections are marked with
-`// MARK: - Splat3D Integration` comments. The viewer is in `SceneViewer.swift`
-and `SplatWorldView.swift`.
+Key sections are marked with `// MARK: - Splat3D Integration` comments:
+
+| File | What it holds |
+|---|---|
+| `CaptureModel.swift` | The run: scan, upload, resume, the error reading, background time |
+| `CaptureStore.swift` | The capture on disk, for resuming after a relaunch |
+| `ContentView.swift` | Start screen, camera view, navigation |
+| `RunViews.swift` | Progress, paused, failed and complete screens |
+| `RecentScenesView.swift` | Scenes: list, thumbnails, delete |
+| `SceneViewer.swift`, `SplatWorldView.swift` | The 3D viewer |
+| `Hairline.swift` | Splat3D's look: colors, type, ruled boxes, the mark |
+| `PreviewHarness.swift` | Debug only: every state, with made-up data |
+
+## Design
+
+The app follows Splat3D's relaunch design, as splat-3d.com does: paper and
+ink with one blue accent, ruled boxes with 3 pt corners, no shadows, no
+pills, and a status shown as a dot with text. The accent marks only what you
+can act on or what is moving. It follows the system's light or dark
+appearance. Text is set in Hanken Grotesk, and ids, numbers and code in
+Martian Mono at 87.5% width; both are bundled in `Fonts/`. The app icon is
+mark G·5 on ink, drawn in the app by `Mark` in `Hairline.swift`.
+
+## Release builds
+
+The version and build number are in `SplatCapture.xcconfig`; raise
+`CURRENT_PROJECT_VERSION` for every TestFlight upload. Release builds leave
+out the state previews and the viewer's frame-rate line. The Info.plist
+declares `ITSAppUsesNonExemptEncryption = NO`: the app uses only the HTTPS
+that iOS provides.
 
 ## Credits
 
@@ -133,3 +218,10 @@ and `SplatWorldView.swift`.
 (c) 2026 Juan Ignacio Andrade, under the MIT License. Its XCFramework carries
 the notices of what it bundles (SPZ, Zstandard, JSON for Modern C++ and
 splat-transform) in `SplatKitCore.xcframework/Notices`.
+
+[Hanken Grotesk](https://github.com/marcologous/hanken-grotesk), copyright
+2021 The Hanken Grotesk Project Authors, and
+[Martian Mono](https://github.com/evilmartians/mono), copyright 2021 The
+Martian Mono Project Authors, are under the SIL Open Font License 1.1. The
+fonts are the unmodified variable files from Google Fonts, renamed; their
+licenses are in `Fonts/` and ship in the app.
