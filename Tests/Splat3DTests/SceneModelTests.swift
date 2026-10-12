@@ -119,9 +119,8 @@ extension SplatClientTests {
 // Every value the API can put in `status`: the database's tour_stage enum
 // (supabase/migrations: create_tours, add_cancelled_stage, add_preview_fields,
 // tour_stage_enum_additions in the gaussian-splatting repo), plus
-// "processing", which getSceneStatus reports from its live Modal probe
-// (api/src/lib/scenes.ts). listScenes and a failed probe return the raw
-// database value, so the pipeline's own stages reach clients too.
+// "processing", which APIs before 1.1.0 reported from getSceneStatus's live
+// Modal probe. Since 1.1.0 every call returns the stored database value.
 
 extension SplatClientTests {
 

@@ -33,6 +33,36 @@ extension SplatClientTests {
 
     // MARK: - createScene
 
+    func testCreateScenePrefersSnakeCaseKeys() async throws {
+        // API 1.3.0 sends both spellings; the deprecated camelCase ones lose.
+        MockURLProtocol.stub("/v1/scenes", .json(201, """
+        {
+            "data": {
+                "sceneId": "deprecated",
+                "uploadUrl": "https://r2.dev/deprecated",
+                "scene_id": "a1b2c3d4e5f6",
+                "id": "a1b2c3d4e5f6",
+                "upload_url": "https://r2.dev/upload?..."
+            },
+            "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+        }
+        """))
+
+        let (sceneID, uploadURL) = try await makeClient().createScene()
+
+        XCTAssertEqual(sceneID, Fixture.sceneID)
+        XCTAssertEqual(uploadURL.absoluteString, "https://r2.dev/upload?...")
+    }
+
+    func testCreateSceneReadsLegacyKeys() async throws {
+        MockURLProtocol.stub("/v1/scenes", .json(201, Fixture.legacyCreateScene))
+
+        let (sceneID, uploadURL) = try await makeClient().createScene()
+
+        XCTAssertEqual(sceneID, Fixture.sceneID)
+        XCTAssertEqual(uploadURL.absoluteString, "https://r2.dev/upload?...")
+    }
+
     func testCreateSceneRejectsOutOfTierParameters() async throws {
         MockURLProtocol.stub("/v1/scenes", .json(422, Fixture.tierViolation))
 
@@ -57,7 +87,7 @@ extension SplatClientTests {
         XCTAssertEqual(scene.numGaussians, 1_940_000)
         XCTAssertEqual(scene.format, .sog)
         XCTAssertEqual(scene.downloadURL?.absoluteString, "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/download")
-        // PostgREST's microsecond timestamps decode (to millisecond precision).
+        // The API's millisecond UTC timestamps decode.
         let whole = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-28T12:00:00Z"))
         XCTAssertEqual(scene.createdAt.timeIntervalSince(whole), 0.123, accuracy: 0.001)
     }
@@ -101,16 +131,16 @@ extension SplatClientTests {
 
     // MARK: - deleteScene
 
-    func testDeleteSceneOwnedByAnotherUserIsForbidden() async throws {
-        MockURLProtocol.stub(Fixture.scenePath, .json(403, Fixture.forbidden))
+    func testDeleteSceneOwnedByAnotherAccountIsNotFound() async throws {
+        MockURLProtocol.stub(Fixture.scenePath, .json(404, Fixture.deleteNotFound))
 
         let error = await expectSplatError { try await self.makeClient().deleteScene(id: Fixture.sceneID) }
 
-        guard case .requestFailed(let apiError) = error else {
-            return XCTFail("Expected .requestFailed, got \(String(describing: error))")
+        guard case .notFound(let apiError) = error else {
+            return XCTFail("Expected .notFound, got \(String(describing: error))")
         }
-        XCTAssertEqual(apiError.statusCode, 403)
-        XCTAssertEqual(apiError.code, "forbidden")
+        XCTAssertEqual(apiError.code, "not_found")
+        XCTAssertEqual(apiError.message, "Scene not found.")
     }
 
     // MARK: - processScene
@@ -148,6 +178,35 @@ extension SplatClientTests {
         XCTAssertTrue(MockURLProtocol.requests(to: Fixture.scenePath).isEmpty)
     }
 
+    func testProcessScenePrefersSceneID() async throws {
+        // API 1.3.0 sends both spellings; the deprecated sceneId loses.
+        MockURLProtocol.stub("\(Fixture.scenePath)/process", .json(200, """
+        {
+            "data": {
+                "status": "processing",
+                "sceneId": "deprecated",
+                "message": "Processing started. This typically takes 7-15 minutes.",
+                "scene_id": "a1b2c3d4e5f6",
+                "id": "a1b2c3d4e5f6"
+            },
+            "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+        }
+        """))
+
+        let launch = try await makeClient().processScene(id: Fixture.sceneID)
+
+        XCTAssertEqual(launch.sceneID, Fixture.sceneID)
+    }
+
+    func testProcessSceneReadsLegacySceneID() async throws {
+        MockURLProtocol.stub("\(Fixture.scenePath)/process", .json(200, Fixture.legacyProcessAccepted))
+
+        let launch = try await makeClient().processScene(id: Fixture.sceneID)
+
+        XCTAssertEqual(launch.sceneID, Fixture.sceneID)
+        XCTAssertEqual(launch.status, .processing)
+    }
+
     // MARK: - retrainScene
 
     func testRetrainSceneReturnsNewSceneID() async throws {
@@ -158,26 +217,51 @@ extension SplatClientTests {
         XCTAssertEqual(newID, "0f1e2d3c4b5a")
         let request = MockURLProtocol.requests(to: "\(Fixture.scenePath)/retrain").first
         XCTAssertEqual(request?.httpMethod, "POST")
-        XCTAssertEqual(try jsonBody(request)["quality_tier"] as? String, "pro")
+        let body = try jsonBody(request)
+        XCTAssertEqual(body["preset"] as? String, "quality")
+        XCTAssertEqual(Set(body.keys), ["preset"])
     }
 
-    func testRetrainSceneMapsPresetsToBillingTiers() async throws {
+    func testRetrainSceneSendsPresetsByName() async throws {
+        // /retrain takes create's preset names since API 1.3.0, so `quality`
+        // is no longer sent as the billing tier `pro`.
         MockURLProtocol.stub("\(Fixture.scenePath)/retrain", .json(200, Fixture.retrainAccepted))
-        let expected: [(ScenePreset, String)] = [
-            (.fast, "fast"),
-            (.standard, "standard"),
-            (.quality, "pro"),
-            (.ultra, "ultra"),
-        ]
 
-        for (preset, _) in expected {
+        for preset in ScenePreset.allCases {
             _ = try await makeClient().retrainScene(id: Fixture.sceneID, preset: preset)
         }
 
-        let tiers = try MockURLProtocol.requests(to: "\(Fixture.scenePath)/retrain").compactMap {
-            try jsonBody($0)["quality_tier"] as? String
+        let presets = try MockURLProtocol.requests(to: "\(Fixture.scenePath)/retrain").compactMap {
+            try jsonBody($0)["preset"] as? String
         }
-        XCTAssertEqual(tiers, expected.map(\.1))
+        XCTAssertEqual(presets, ["fast", "standard", "quality", "ultra"])
+    }
+
+    func testRetrainScenePrefersSceneID() async throws {
+        MockURLProtocol.stub("\(Fixture.scenePath)/retrain", .json(200, """
+        {
+            "data": {
+                "id": "legacy",
+                "source_scene_id": "a1b2c3d4e5f6",
+                "retraining": true,
+                "quality_tier": "pro",
+                "scene_id": "0f1e2d3c4b5a"
+            },
+            "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+        }
+        """))
+
+        let newID = try await makeClient().retrainScene(id: Fixture.sceneID, preset: .quality)
+
+        XCTAssertEqual(newID, "0f1e2d3c4b5a")
+    }
+
+    func testRetrainSceneReadsLegacyID() async throws {
+        MockURLProtocol.stub("\(Fixture.scenePath)/retrain", .json(200, Fixture.legacyRetrainAccepted))
+
+        let newID = try await makeClient().retrainScene(id: Fixture.sceneID, preset: .quality)
+
+        XCTAssertEqual(newID, "0f1e2d3c4b5a")
     }
 
     func testRetrainUploadingSceneConflicts() async throws {
@@ -310,8 +394,8 @@ extension SplatClientTests {
         XCTAssertEqual(usage.period, "2026-04")
         XCTAssertEqual(usage.scenesCreated, 3)
         XCTAssertEqual(usage.scenesProcessed, 2)
-        XCTAssertEqual(usage.gpuSecondsUsed, 450)
-        XCTAssertEqual(usage.storageBytes, 1_073_741_824)
+        XCTAssertEqual(usage.gpuSecondsUsed, 0)
+        XCTAssertEqual(usage.storageBytes, 0)
         XCTAssertEqual(usage.limits.scenesCreated, 100)
         XCTAssertEqual(usage.limits.gpuSeconds, 36_000)
         XCTAssertEqual(usage.limits.storageBytes, 53_687_091_200)
@@ -464,7 +548,7 @@ extension SplatClientTests {
 
     func testDownloadOfAFormatTheAPIDoesntAcceptIsAValidationFailure() async throws {
         // An API that predates a format rejects it in route validation: a
-        // 400 with no error code, its message naming the field.
+        // 400 `invalid_input`, its message naming the field.
         MockURLProtocol.stub("\(Fixture.scenePath)/download", .json(400, Fixture.unknownFormat))
 
         let error = await expectSplatError {
@@ -475,7 +559,7 @@ extension SplatClientTests {
             return XCTFail("Expected .requestFailed, got \(String(describing: error))")
         }
         XCTAssertEqual(apiError.statusCode, 400)
-        XCTAssertNil(apiError.code)
+        XCTAssertEqual(apiError.code, "invalid_input")
         XCTAssertEqual(apiError.message, "format: Invalid enum value. Expected 'sog' | 'ply' | 'spz', received 'glb'")
         XCTAssertEqual(MockURLProtocol.requests(to: "\(Fixture.scenePath)/download").count, 1)
     }

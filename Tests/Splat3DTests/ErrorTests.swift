@@ -36,9 +36,22 @@ extension SplatClientTests {
         )
     }
 
+    func testValidationFailureReadsTheEnvelope() async throws {
+        MockURLProtocol.stub("/v1/scenes", .json(400, Fixture.validationFailure))
+
+        let error = await expectSplatError { try await self.makeClient().listScenePage(limit: 0) }
+
+        let apiError = try XCTUnwrap(error?.apiError)
+        XCTAssertEqual(apiError.statusCode, 400)
+        XCTAssertEqual(apiError.code, "invalid_input")
+        XCTAssertEqual(apiError.message, "limit: Number must be greater than or equal to 1")
+        XCTAssertEqual(apiError.requestID, Fixture.requestID)
+    }
+
     func testRequestIDFallsBackToHeader() async throws {
-        // Schema-validation 400s skip the envelope, so only the header has the ID.
-        MockURLProtocol.stub("/v1/scenes", .json(400, Fixture.validationFailure, headers: requestIDHeader))
+        // Schema-validation 400s from APIs before 1.1.0 skip the envelope, so
+        // only the header has the ID.
+        MockURLProtocol.stub("/v1/scenes", .json(400, Fixture.legacyValidationFailure, headers: requestIDHeader))
 
         let error = await expectSplatError { try await self.makeClient().listScenePage(limit: 0) }
 
