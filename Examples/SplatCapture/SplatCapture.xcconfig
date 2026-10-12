@@ -9,4 +9,9 @@
 
 SPLAT_API_KEY =
 
+// The version people see, and the build number. TestFlight refuses a build
+// number it has seen for this version: raise it for every upload.
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+
 #include? "Secrets.xcconfig"
