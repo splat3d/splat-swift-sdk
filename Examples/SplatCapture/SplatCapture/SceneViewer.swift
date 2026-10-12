@@ -27,17 +27,26 @@ struct SceneViewerScreen: View {
 
     /// Scene units per second while a move arrow is held.
     private static let walkingSpeed: Float = 0.6
+    private static let actionWidth: CGFloat = 220
 
     init(sceneID: String, title: String) {
         self.title = title
         _model = StateObject(wrappedValue: SceneViewerModel(sceneID: sceneID))
     }
 
+    #if DEBUG
+    init(title: String, previewing model: SceneViewerModel) {
+        self.title = title
+        _model = StateObject(wrappedValue: model)
+    }
+    #endif
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             content
         }
+        .environment(\.colorScheme, .dark)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.black, for: .navigationBar)
@@ -73,10 +82,11 @@ struct SceneViewerScreen: View {
         case .failed(let failure):
             VStack(spacing: 16) {
                 Notice(symbol: "exclamationmark.triangle", title: failure.title, detail: failure.detail)
-                Button("Try Again") {
+                Button("Try again") {
                     Task { await model.retry() }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
+                .frame(maxWidth: Self.actionWidth)
             }
         }
     }
@@ -93,9 +103,11 @@ struct SceneViewerScreen: View {
         )
         .ignoresSafeArea()
         .overlay(alignment: .top) {
+            #if DEBUG
             if let stats = model.stats {
                 StatsLine(stats: stats)
             }
+            #endif
         }
         .overlay(alignment: .bottom) {
             if model.worldReady {
@@ -115,31 +127,42 @@ struct SceneViewerScreen: View {
                 }
             }
 
-            HStack(spacing: 12) {
-                Picker("Navigation", selection: modeSelection) {
-                    Text("Orbit").tag(NavigationMode.orbit)
-                    Text("Look").tag(NavigationMode.look)
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 160)
+            HStack(spacing: 6) {
+                SquareTabs(options: NavigationMode.allCases, selection: modeSelection) { $0.rawValue }
 
-                Toggle(isOn: $flipped) {
+                Button {
+                    flipped.toggle()
+                } label: {
                     Label("Flip", systemImage: "arrow.up.arrow.down")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(flipped ? Palette.ink : Palette.graphite)
+                        .frame(width: Self.controlSize, height: Self.controlSize)
+                        .overlay(Hairline.shape.strokeBorder(flipped ? Palette.ink : Palette.rule, lineWidth: Hairline.rule))
                 }
-                .toggleStyle(.button)
+                .accessibilityAddTraits(flipped ? .isSelected : [])
 
                 Button {
                     resetCount += 1
                 } label: {
                     Label("Reset", systemImage: "scope")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(Palette.ink)
+                        .frame(width: Self.controlSize, height: Self.controlSize)
+                        .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
                 }
-                .labelStyle(.iconOnly)
             }
+            .buttonStyle(.plain)
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(10)
+        .background(Palette.paper.opacity(Self.panelOpacity), in: Hairline.shape)
+        .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
         .padding()
     }
+
+    /// Side of the square Flip and Reset buttons, as tall as the tabs.
+    private static let controlSize: CGFloat = 36
+    /// The controls sit over the scene: mostly opaque, never glass.
+    private static let panelOpacity = 0.9
 
     /// The mode picker's selection. A switch hides the move arrows, so one held
     /// through it never reports its release: stop walking in the same update.
@@ -157,7 +180,7 @@ struct SceneViewerScreen: View {
     private func holdToMove(symbol: String, label: String, speed: Float) -> some View {
         Button {} label: {
             Image(systemName: symbol)
-                .font(.title2.weight(.semibold))
+                .font(.title3.weight(.semibold))
         }
         .buttonStyle(HoldButtonStyle { held in
             walkSpeed = held ? speed : 0
@@ -199,6 +222,17 @@ final class SceneViewerModel: ObservableObject {
         self.sceneID = sceneID
     }
 
+    #if DEBUG
+    /// Shows `phase` and never downloads, for PreviewHarness.
+    init(previewing phase: Phase) {
+        sceneID = ""
+        self.phase = phase
+        isPreview = true
+    }
+
+    private var isPreview = false
+    #endif
+
     /// Try Again. A file still on disk is one SplatKit refused: hand it over
     /// again, since a new download would bring the same bytes.
     func retry() async {
@@ -218,6 +252,11 @@ final class SceneViewerModel: ObservableObject {
     }
 
     func load() async {
+        #if DEBUG
+        guard !isPreview else {
+            return
+        }
+        #endif
         generation += 1
         let current = generation
         discardFile()
@@ -231,7 +270,7 @@ final class SceneViewerModel: ObservableObject {
         }
 
         // The SDK takes any URLSession; this one's delegate sees the download task.
-        let watcher = DownloadWatcher()
+        let watcher = TransferWatcher()
         let session = URLSession(configuration: .default, delegate: watcher, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         let client = SplatClient(apiKey: apiKey, session: session)
@@ -239,7 +278,7 @@ final class SceneViewerModel: ObservableObject {
         let progress = Task { [weak self] in
             while !Task.isCancelled {
                 if let bytes = watcher.bytes {
-                    self?.showProgress(received: bytes.received, expected: bytes.expected)
+                    self?.showProgress(received: bytes.received, expected: bytes.expectedToReceive)
                 }
                 try? await Task.sleep(for: SceneViewerModel.progressInterval)
             }
@@ -311,11 +350,21 @@ final class SceneViewerModel: ObservableObject {
     }
 }
 
-// MARK: - DownloadWatcher
+// MARK: - TransferWatcher
 
-/// Remembers the newest task the SDK starts on its session, to read its bytes.
-/// Retries start new tasks, so the newest one is the live one.
-final class DownloadWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+/// A transfer's bytes so far, and the totals when the request or response
+/// gave a length.
+struct TransferBytes {
+    let sent: Int64
+    let expectedToSend: Int64?
+    let received: Int64
+    let expectedToReceive: Int64?
+}
+
+/// Remembers the newest task the SDK starts on its session, to read its bytes:
+/// the viewer's download, and the capture's upload. Retries start new tasks,
+/// so the newest one is the live one.
+final class TransferWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
 
     private let lock = NSLock()
     private var task: URLSessionTask?
@@ -324,16 +373,19 @@ final class DownloadWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendab
         lock.withLock { self.task = task }
     }
 
-    /// Bytes received so far, and the total when the response gave a length.
-    var bytes: (received: Int64, expected: Int64?)? {
+    var bytes: TransferBytes? {
         lock.withLock {
             guard let task else {
                 return nil
             }
-            // -1 (NSURLSessionTransferSizeUnknown) until a Content-Length arrives.
-            let length = task.countOfBytesExpectedToReceive
-            let expected: Int64? = length > 0 ? length : nil
-            return (received: task.countOfBytesReceived, expected: expected)
+            // -1 (NSURLSessionTransferSizeUnknown) until a length is known.
+            let total = { (length: Int64) in length > 0 ? length : nil }
+            return TransferBytes(
+                sent: task.countOfBytesSent,
+                expectedToSend: total(task.countOfBytesExpectedToSend),
+                received: task.countOfBytesReceived,
+                expectedToReceive: total(task.countOfBytesExpectedToReceive)
+            )
         }
     }
 }
@@ -409,15 +461,15 @@ private struct DownloadProgress: View {
             if let expected {
                 ProgressView(value: Double(min(received, expected)), total: Double(expected))
                     .frame(maxWidth: 240)
-                Text("Downloading SPZ… \(Self.format(received)) of \(Self.format(expected))")
+                Text("Downloading SPZ · \(Self.format(received)) of \(Self.format(expected))")
             } else {
                 ProgressView()
-                Text(received > 0 ? "Downloading SPZ… \(Self.format(received))" : "Requesting SPZ…")
+                Text(received > 0 ? "Downloading SPZ · \(Self.format(received))" : "Requesting SPZ…")
             }
         }
-        .font(.subheadline.monospacedDigit())
-        .foregroundStyle(.white)
-        .tint(.white)
+        .typeStyle(.data)
+        .foregroundStyle(Palette.ink)
+        .tint(Palette.accent)
     }
 
     private static func format(_ bytes: Int64) -> String {
@@ -436,33 +488,35 @@ private struct Notice: View {
             if let symbol {
                 Image(systemName: symbol)
                     .font(.largeTitle)
+                    .foregroundStyle(Palette.graphite)
             } else {
                 ProgressView()
             }
             Text(title)
-                .font(.headline)
+                .typeStyle(.title)
             Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.75))
+                .typeStyle(.footnote)
+                .foregroundStyle(Palette.graphite)
         }
         .multilineTextAlignment(.center)
-        .foregroundStyle(.white)
-        .tint(.white)
+        .foregroundStyle(Palette.ink)
+        .tint(Palette.accent)
         .padding(32)
     }
 }
 
-/// Frame rate and splats drawn, as SplatKit measures them.
+#if DEBUG
+/// Frame rate and splats drawn, as SplatKit measures them. Debug builds only.
 private struct StatsLine: View {
     let stats: SplatStats
 
     var body: some View {
         Text("\(Int(stats.fps.rounded())) fps · \(Self.count(stats.drawnSplatCount)) of \(Self.count(stats.splatCount)) splats")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10)
+            .typeStyle(.code)
+            .foregroundStyle(Palette.ink)
+            .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(.black.opacity(0.6), in: Capsule())
+            .background(Palette.paper.opacity(0.8), in: Hairline.shape)
             .padding(.top, 8)
     }
 
@@ -470,16 +524,21 @@ private struct StatsLine: View {
         value.formatted(.number.notation(.compactName))
     }
 }
+#endif
 
 /// Reports presses: `onHold(true)` while held, `onHold(false)` on release.
 private struct HoldButtonStyle: ButtonStyle {
     let onHold: (Bool) -> Void
 
+    private static let size: CGFloat = 56
+    private static let restingOpacity = 0.9
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.white)
-            .frame(width: 56, height: 56)
-            .background(.white.opacity(configuration.isPressed ? 0.35 : 0.15), in: Circle())
+            .foregroundStyle(configuration.isPressed ? Palette.onAccent : Palette.ink)
+            .frame(width: Self.size, height: Self.size)
+            .background(configuration.isPressed ? Palette.accent : Palette.paper.opacity(Self.restingOpacity), in: Hairline.shape)
+            .overlay(Hairline.shape.strokeBorder(configuration.isPressed ? Palette.accent : Palette.rule, lineWidth: Hairline.rule))
             .onChange(of: configuration.isPressed) { _, pressed in
                 onHold(pressed)
             }
