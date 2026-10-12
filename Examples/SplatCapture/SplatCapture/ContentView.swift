@@ -173,7 +173,6 @@ enum Route: Hashable {
     case viewer(sceneID: String, title: String)
 }
 
-
 // MARK: - ContentView
 
 struct ContentView: View {

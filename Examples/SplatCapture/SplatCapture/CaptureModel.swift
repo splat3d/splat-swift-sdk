@@ -159,6 +159,9 @@ final class CaptureModel: ObservableObject {
     private let store: CaptureStore
 
     private var runTask: Task<Void, Never>?
+    /// Bumped by every run and by discarding, so a cancelled run that ends
+    /// after another started (or after a discard) changes nothing.
+    private var runGeneration = 0
     private var uploadWatch: Task<Void, Never>?
     private var thumbnailTask: Task<Void, Never>?
     private var isLoadingThumbnail = false
@@ -405,7 +408,9 @@ final class CaptureModel: ObservableObject {
 
     /// Forget the capture. A scene already created stays in Scenes.
     func discard() {
+        runGeneration += 1
         runTask?.cancel()
+        endBackgroundTime()
         store.clear()
         reset()
     }
@@ -435,6 +440,8 @@ final class CaptureModel: ObservableObject {
             return
         }
 
+        runGeneration += 1
+        let generation = runGeneration
         runTask?.cancel()
         canceller = .app
         thumbnail = nil
@@ -446,9 +453,15 @@ final class CaptureModel: ObservableObject {
         runTask = Task { [weak self] in
             do {
                 let scene = try await operation(client)
-                self?.finish(scene)
+                guard let self, self.runGeneration == generation else {
+                    return
+                }
+                self.finish(scene)
             } catch {
-                self?.stop(with: error)
+                guard let self, self.runGeneration == generation else {
+                    return
+                }
+                self.stop(with: error)
             }
         }
     }
