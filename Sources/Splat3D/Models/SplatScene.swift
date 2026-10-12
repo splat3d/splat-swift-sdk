@@ -7,10 +7,13 @@ import Foundation
 /// A scene moves through these statuses while it processes:
 ///
 /// ```
-/// uploading -> preview_extracting -> preview_generating -> preview_compressing
-///           -> extracting_frames -> estimating_poses -> training -> exporting -> compressing
+/// uploading -> extracting_frames -> estimating_poses -> training -> exporting -> compressing
 ///           -> complete | failed | cancelled
 /// ```
+///
+/// Older scenes may hold a status no new scene reaches: ``runningSfm``, or one
+/// of the retired preview stages, which scenes passed through before the
+/// stages above.
 ///
 /// The set is open. The API adds pipeline stages over time, and a status this
 /// SDK doesn't name still decodes with its raw value. Anything other than
@@ -31,18 +34,22 @@ public struct SceneStatus: RawRepresentable, Hashable, Codable, Sendable, CaseIt
     /// The scene exists and waits for its source. No processing job has started.
     public static let uploading = SceneStatus(rawValue: "uploading")
 
-    // MARK: Preview
+    // MARK: Preview (legacy)
 
-    /// Frames are being extracted for the fast preview.
+    /// Legacy: frames were being extracted for the fast preview. The pipeline
+    /// no longer makes a preview, so only older scenes hold this stage.
     public static let previewExtracting = SceneStatus(rawValue: "preview_extracting")
 
-    /// The fast preview is being generated.
+    /// Legacy: the fast preview was being generated. Only older scenes hold
+    /// this stage.
     public static let previewGenerating = SceneStatus(rawValue: "preview_generating")
 
-    /// The fast preview is being compressed.
+    /// Legacy: the fast preview was being compressed. Only older scenes hold
+    /// this stage.
     public static let previewCompressing = SceneStatus(rawValue: "preview_compressing")
 
-    /// A fast preview is viewable; full processing is still running.
+    /// Legacy: a fast preview was viewable while full processing ran. APIs
+    /// before 1.1.0 reported it; the API no longer sends it.
     public static let previewReady = SceneStatus(rawValue: "preview_ready")
 
     // MARK: Full processing
@@ -65,7 +72,9 @@ public struct SceneStatus: RawRepresentable, Hashable, Codable, Sendable, CaseIt
     /// The model is being compressed to SOG.
     public static let compressing = SceneStatus(rawValue: "compressing")
 
-    /// Processing is running. The API reports this while it reads live progress.
+    /// The status a launch reports in ``SceneLaunch/status``. A scene reports
+    /// its pipeline stage instead; APIs before 1.1.0 also reported
+    /// `processing` for a scene while they read its live progress.
     public static let processing = SceneStatus(rawValue: "processing")
 
     // MARK: Terminal
@@ -142,10 +151,12 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
     /// Whether the scene is publicly viewable.
     public let isPublic: Bool
 
-    /// Detailed processing stage (may differ from top-level status during transitions).
+    /// Pipeline stage while processing, e.g. `"training"`; `nil` otherwise,
+    /// including once complete.
     public let processingStage: String?
 
-    /// Processing progress as a percentage (0-100), or `nil` if not available.
+    /// Progress as a percentage (0-100) while processing, when known; `nil`
+    /// otherwise, including once complete.
     public let processingPct: Double?
 
     /// Number of Gaussians in the trained model (available after training completes).

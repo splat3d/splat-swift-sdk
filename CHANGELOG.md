@@ -221,6 +221,24 @@ All notable changes to Splat3D. Versions follow [Semantic Versioning](https://se
 - An error response that isn't from the API (an edge proxy's HTML page, or an
   empty or very long body) reads as its HTTP reason phrase, such as
   "Bad Gateway", instead of the raw page.
+- Splat3D targets API 1.3.0. It reads the launch answers' snake_case keys,
+  `scene_id` and `upload_url` from `createScene`, `scene_id` from
+  `processScene` and `retrainScene`, and falls back to the `sceneId`,
+  `uploadUrl` and `id` keys older APIs send. The API deprecated `sceneId` and
+  `uploadUrl` in 1.3.0.
+- `retrainScene(id:preset:)` sends the preset by name, `{"preset": "quality"}`,
+  instead of the billing tier, `{"quality_tier": "pro"}`. The call is
+  unchanged. `/retrain` takes `preset` since API 1.3.0; an older API ignores
+  it and retrains at `standard`.
+- `SceneStatus`'s `preview*` statuses are documented as legacy: the pipeline
+  no longer makes a preview, so only older scenes hold one. `.processing` is
+  documented as the status a launch reports, since API 1.1.0 reports a
+  scene's pipeline stage instead.
+- `SplatScene.processingStage` and `processingPct` are documented as `nil`
+  unless the scene is processing, and `Usage`'s GPU and storage fields as
+  deprecated by the API.
+- `cancelScene(id:)` is documented as refusing only a finished scene. It no
+  longer claims the preview stages can't be cancelled.
 
 ### Deprecated
 

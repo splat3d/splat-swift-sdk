@@ -14,12 +14,12 @@ public struct Usage: Decodable, Sendable, Equatable {
     /// Scenes processed this period.
     public let scenesProcessed: Int
 
-    /// GPU seconds recorded this period. The API doesn't record GPU time
-    /// yet, so this is 0.
+    /// GPU seconds recorded this period. Always 0: nothing counts it, and the
+    /// API deprecated the field in 1.2.0.
     public let gpuSecondsUsed: Int
 
-    /// Storage bytes recorded this period. The API doesn't record storage
-    /// yet, so this is 0.
+    /// Storage bytes recorded this period. Always 0: nothing counts it, and
+    /// the API deprecated the field in 1.2.0.
     public let storageBytes: Int64
 
     /// Your plan's limits for this period.
@@ -62,10 +62,12 @@ public struct Usage: Decodable, Sendable, Equatable {
         /// Scenes you can process per period, or `nil` for unlimited.
         public let scenesProcessed: Int?
 
-        /// GPU seconds per period. The API doesn't enforce it yet.
+        /// GPU seconds per period. Not enforced; the API deprecated the field
+        /// in 1.2.0.
         public let gpuSeconds: Int
 
-        /// Storage quota in bytes. The API doesn't enforce it yet.
+        /// Storage quota in bytes. Not enforced; the API deprecated the field
+        /// in 1.2.0.
         public let storageBytes: Int64
 
         /// Create limits, e.g. for a test double. `nil` means unlimited.

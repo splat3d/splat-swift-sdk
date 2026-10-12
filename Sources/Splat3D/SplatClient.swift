@@ -2,10 +2,44 @@ import Foundation
 
 // MARK: - Create Scene Response (internal)
 
-/// Response from `POST /v1/scenes`.
+/// Response from `POST /v1/scenes`. API 1.3.0 answers `scene_id` and
+/// `upload_url` beside the camelCase `sceneId` and `uploadUrl`, which it
+/// deprecates and older versions send alone. The snake_case keys win.
 struct CreateSceneData: Decodable {
     let sceneId: String
     let uploadUrl: URL
+
+    enum CodingKeys: String, CodingKey {
+        case sceneID = "scene_id"
+        case uploadURL = "upload_url"
+        case legacySceneID = "sceneId"
+        case legacyUploadURL = "uploadUrl"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sceneId = try container.decode(String.self, forKey: .sceneID, legacyKey: .legacySceneID)
+        uploadUrl = try container.decode(URL.self, forKey: .uploadURL, legacyKey: .legacyUploadURL)
+    }
+}
+
+// MARK: - Renamed response keys (internal)
+
+private extension KeyedDecodingContainer {
+
+    /// The value under `key`, or under `legacyKey` when a response from an
+    /// older API lacks `key`. With neither, the error names `key`.
+    ///
+    /// `{"scene_id": "a", "sceneId": "b"}` reads `"a"`; `{"sceneId": "b"}` reads `"b"`.
+    func decode<T: Decodable>(_ type: T.Type, forKey key: Key, legacyKey: Key) throws -> T {
+        if let value = try decodeIfPresent(type, forKey: key) {
+            return value
+        }
+        guard contains(legacyKey) else {
+            return try decode(type, forKey: key)
+        }
+        return try decode(type, forKey: legacyKey)
+    }
 }
 
 // MARK: - Update Scene Request Body (internal)
@@ -33,45 +67,54 @@ struct UpdateSceneBody: Encodable {
 
 // MARK: - Retrain Scene Request Body (internal)
 
-/// Request body for `POST /v1/scenes/{id}/retrain`.
+/// Request body for `POST /v1/scenes/{id}/retrain`: the tier in create's
+/// preset names, e.g. `{"preset": "quality"}`. API 1.3.0 takes `preset`
+/// beside the billing-named `quality_tier` (where `quality` is `pro`), and
+/// prices the retrain as the tier it names.
 struct RetrainSceneBody: Encodable {
-    let qualityTier: String
-
-    enum CodingKeys: String, CodingKey {
-        case qualityTier = "quality_tier"
-    }
-
-    /// The retrain endpoint names tiers after billing tiers, where the
-    /// `quality` preset is called `pro` (TIER_TABLE in the API's
-    /// packages/core/src/tiers.ts: `pro: { preset: "quality" }`).
-    init(preset: ScenePreset) {
-        switch preset {
-        case .fast:
-            qualityTier = "fast"
-        case .standard:
-            qualityTier = "standard"
-        case .quality:
-            qualityTier = "pro"
-        case .ultra:
-            qualityTier = "ultra"
-        }
-    }
+    let preset: ScenePreset
 }
 
 // MARK: - Retrain Scene Response (internal)
 
-/// Response from `POST /v1/scenes/{id}/retrain`. `id` is the new scene.
+/// Response from `POST /v1/scenes/{id}/retrain`. `scene_id` (API 1.3.0) and
+/// `id` both name the new scene; `source_scene_id` is the one retrained.
 struct RetrainSceneData: Decodable {
     let id: String
+
+    enum CodingKeys: String, CodingKey {
+        case sceneID = "scene_id"
+        case legacyID = "id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .sceneID, legacyKey: .legacyID)
+    }
 }
 
 // MARK: - Process Scene Response (internal)
 
-/// Response from `POST /v1/scenes/{id}/process`.
+/// Response from `POST /v1/scenes/{id}/process`. API 1.3.0 answers
+/// `scene_id` beside the camelCase `sceneId`, which it deprecates and older
+/// versions send alone. `scene_id` wins.
 struct ProcessSceneData: Decodable {
     let status: String
     let sceneId: String
     let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case status, message
+        case sceneID = "scene_id"
+        case legacySceneID = "sceneId"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(String.self, forKey: .status)
+        sceneId = try container.decode(String.self, forKey: .sceneID, legacyKey: .legacySceneID)
+        message = try container.decode(String.self, forKey: .message)
+    }
 }
 
 // MARK: - Process Scene Request Body (internal)
@@ -509,9 +552,8 @@ public final class SplatClient: Sendable {
     /// - Parameter id: The scene ID.
     /// - Throws: ``SplatError/notFound(_:)`` if the scene doesn't exist.
     ///   ``SplatError/requestFailed(_:)`` with code `conflict` if the scene
-    ///   can't be cancelled in its current state: it has finished, or it is in
-    ///   a preview stage (``SceneStatus/previewExtracting``,
-    ///   ``SceneStatus/previewGenerating``, ``SceneStatus/previewCompressing``).
+    ///   has finished: ``SceneStatus/complete``, ``SceneStatus/failed`` or
+    ///   ``SceneStatus/cancelled``.
     public func cancelScene(id: String) async throws {
         try await api.requestVoid(path: APIPath.scene(id, .cancel), method: .post)
     }
