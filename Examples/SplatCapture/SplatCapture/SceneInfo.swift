@@ -195,16 +195,18 @@ struct SceneInfoSheet: View {
         }
     }
 
-    /// What the metrics shown mean, in plain words.
+    /// What the metrics shown mean, in plain words. "Images", not
+    /// "photos": SplatCapture uploads video, and the model is made from
+    /// its frames.
     private var metricsNote: String {
         var sentences = [
             scene.ssimHoldout == nil
-                ? "PSNR compares the model's renders with your photos, in dB."
-                : "PSNR (in dB) and SSIM (up to 1) compare the model's renders with your photos.",
+                ? "PSNR compares the model's renders with the images it was made from, in dB."
+                : "PSNR (in dB) and SSIM (up to 1) compare the model's renders with the images it was made from.",
             "Higher is better.",
         ]
         if scene.hasHoldout {
-            sentences.append("Holdout uses photos the model never trained on, so it's the fairer number.")
+            sentences.append("Holdout images were kept out of training, so it's the fairer number.")
         }
         return sentences.joined(separator: " ")
     }
