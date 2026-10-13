@@ -21,6 +21,9 @@ struct SceneViewerScreen: View {
     @StateObject private var model: SceneViewerModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #if DEBUG
+    @Environment(\.previewBackdrop) private var previewBackdrop
+    #endif
     @State private var mode = NavigationMode.orbit
     /// Flip, which the user turns on: off shows the scene upright.
     @State private var userFlipped = false
@@ -151,6 +154,13 @@ struct SceneViewerScreen: View {
             onEvent: { model.handle($0) }
         )
         .ignoresSafeArea()
+        #if DEBUG
+        .overlay {
+            if previewBackdrop == .brightRoom {
+                BrightRoom()
+            }
+        }
+        #endif
         .overlay(alignment: .top) {
             TopScrim()
         }

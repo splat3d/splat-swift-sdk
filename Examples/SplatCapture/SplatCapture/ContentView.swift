@@ -437,6 +437,10 @@ struct ScanningView: View {
     @State private var isStopping = false
     @State private var confirmingCancel = false
 
+    #if DEBUG
+    @Environment(\.previewBackdrop) private var previewBackdrop
+    #endif
+
     /// Space between glass surfaces; closer ones blend on iOS 26.
     private static let glassSpacing: CGFloat = 12
     private static let recordingDot: CGFloat = 10
@@ -447,8 +451,7 @@ struct ScanningView: View {
                 ARCameraView(session: session)
                     .ignoresSafeArea()
             } else {
-                Color.black
-                    .ignoresSafeArea()
+                cameraStandIn
             }
 
             VStack(spacing: Self.glassSpacing) {
@@ -516,6 +519,23 @@ struct ScanningView: View {
         } message: {
             Text("The video and poses are deleted. Nothing is uploaded or charged.")
         }
+    }
+
+    /// Black until ARKit's camera starts. Debug previews can put a bright
+    /// room there instead, to check the glass over a light picture.
+    @ViewBuilder
+    private var cameraStandIn: some View {
+        #if DEBUG
+        if previewBackdrop == .brightRoom {
+            BrightRoom()
+        } else {
+            Color.black
+                .ignoresSafeArea()
+        }
+        #else
+        Color.black
+            .ignoresSafeArea()
+        #endif
     }
 
     /// ARKit's tracking and the preset in one line, "● Tracking well · Fast",

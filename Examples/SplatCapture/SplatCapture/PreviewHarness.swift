@@ -21,12 +21,14 @@ struct PreviewHarness: View {
     }
 
     /// Every state, in screenshot order. A state ending in
-    /// `-accessibility` is the same state at the largest text size,
-    /// scrolled to the middle.
+    /// `-accessibility` is the same state at the largest text size (a
+    /// message that scrolls starts at its middle; a list, at its top); one
+    /// ending in `-bright` has a bright room behind the overlays instead of
+    /// black, the hard case for glass.
     static let states = [
         "home", "home-first-run", "home-no-lidar", "home-camera-off", "home-no-key", "home-deleted",
         "home-accessibility",
-        "scanning", "scanning-limited",
+        "scanning", "scanning-limited", "scanning-bright",
         "saving", "uploading", "launching", "processing", "processing-unknown", "processing-offline",
         "processing-accessibility",
         "paused-connection", "paused-background", "paused-app-closed", "paused-not-created",
@@ -35,19 +37,24 @@ struct PreviewHarness: View {
         "complete", "complete-delete-error",
         "scenes", "scenes-empty", "scenes-error",
         "viewer-downloading", "viewer-undrawable", "viewer-no-spz", "viewer-orbit", "viewer-look",
+        "viewer-orbit-accessibility", "viewer-orbit-bright",
     ]
 
     let state: String
 
     private static let accessibilitySuffix = "-accessibility"
+    private static let brightSuffix = "-bright"
 
     var body: some View {
         if state.hasSuffix(Self.accessibilitySuffix) {
-            // Scrolled to the middle: at this size the top is all headline,
-            // and the preset tabs and run steps are further down.
+            // A message that scrolls starts at its middle. Lists ignore the
+            // anchor and start at the top.
             screen(String(state.dropLast(Self.accessibilitySuffix.count)))
                 .dynamicTypeSize(.accessibility5)
                 .defaultScrollAnchor(.center)
+        } else if state.hasSuffix(Self.brightSuffix) {
+            screen(String(state.dropLast(Self.brightSuffix.count)))
+                .environment(\.previewBackdrop, .brightRoom)
         } else {
             screen(state)
         }
@@ -212,6 +219,52 @@ struct PreviewHarness: View {
         default:
             return SceneViewerModel(previewing: .undrawable(bytes: 41 * megabyte))
         }
+    }
+}
+
+// MARK: - Backdrop
+
+/// What a preview shows where the camera or the scene would be.
+enum PreviewBackdrop {
+    /// What the Simulator shows: nothing.
+    case black
+    /// A white wall with a window, the light picture glass must stay
+    /// legible over.
+    case brightRoom
+}
+
+extension EnvironmentValues {
+    @Entry var previewBackdrop = PreviewBackdrop.black
+}
+
+/// A bright room in shapes: a white wall, a window full of sky behind where
+/// the buttons sit, and a pale floor.
+struct BrightRoom: View {
+
+    private static let wall = [Color(white: 0.98), Color(white: 0.9)]
+    private static let sky = [Color.white, Color(red: 0.82, green: 0.91, blue: 1)]
+    private static let floor = Color(red: 0.87, green: 0.84, blue: 0.8)
+    private static let frame = Color(white: 0.75)
+    private static let floorShare: CGFloat = 0.12
+    private static let windowSize = CGSize(width: 0.7, height: 0.45)
+    /// The window's centre, as a share of the height from the top.
+    private static let windowCenter: CGFloat = 0.62
+
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            ZStack(alignment: .bottom) {
+                LinearGradient(colors: Self.wall, startPoint: .top, endPoint: .bottom)
+                LinearGradient(colors: Self.sky, startPoint: .top, endPoint: .bottom)
+                    .frame(width: size.width * Self.windowSize.width, height: size.height * Self.windowSize.height)
+                    .border(Self.frame, width: 6)
+                    .position(x: size.width / 2, y: size.height * Self.windowCenter)
+                Self.floor
+                    .frame(height: size.height * Self.floorShare)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
 }
 
