@@ -20,15 +20,24 @@ struct Screen<Content: View>: View {
     let lead: String?
     @ViewBuilder let content: Content
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        if let status {
-                            StatusDot(state: status)
+                    // At accessibility sizes the ID goes under the label:
+                    // side by side, both broke mid-word.
+                    let eyebrowLayout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                        : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 6))
+                    eyebrowLayout {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            if let status {
+                                StatusDot(state: status)
+                            }
+                            MonoLabel(sceneID == nil ? eyebrow : "\(eyebrow) · scene")
                         }
-                        MonoLabel(sceneID == nil ? eyebrow : "\(eyebrow) · scene")
                         // IDs are case sensitive: not in the label's capitals.
                         if let sceneID {
                             Text(sceneID)
@@ -473,6 +482,12 @@ struct FailedView: View {
                 if failed.retry == .impossible {
                     Button("New capture", action: onDiscard)
                         .buttonStyle(.primary)
+                    // Say so, as Upload again does: the scene goes too.
+                    if failed.leftoverScene == .delete {
+                        Text("Also deletes this scene, which was never launched or charged.")
+                            .typeStyle(.footnote)
+                            .foregroundStyle(Palette.graphite)
+                    }
                 } else {
                     Button("Discard capture", action: onDiscard)
                         .buttonStyle(.destructive)

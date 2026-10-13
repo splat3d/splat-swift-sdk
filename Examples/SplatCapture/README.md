@@ -118,7 +118,7 @@ xcrun simctl launch booted com.splat3d.SplatCapture -SplatPreviewState paused-cr
 ```
 
 A state ending in `-accessibility`, such as `home-accessibility`, shows it at
-the largest Dynamic Type size.
+the largest Dynamic Type size, scrolled to the middle.
 
 Release builds don't contain it.
 

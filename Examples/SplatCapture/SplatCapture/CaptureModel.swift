@@ -1023,7 +1023,7 @@ extension PausedRun {
     var detail: String {
         switch cause {
         case .connection:
-            return "The network dropped before SplatCapture heard back. Resume once you're online."
+            return "The network dropped before SplatCapture heard back."
         case .backgrounded:
             return "iOS paused SplatCapture soon after you left it. It picks up when you come back, or tap Resume."
         case .appClosed:
@@ -1033,7 +1033,7 @@ extension PausedRun {
         case .queueFull(let message):
             return message
         case .quotaExceeded(let message):
-            return message
+            return "\(message) Change your plan in billing, or Resume next month."
         case .keyRejected:
             return "The API didn't accept this build's key. Set SPLAT_API_KEY in Secrets.xcconfig and build again."
         case .timedOut:

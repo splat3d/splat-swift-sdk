@@ -20,6 +20,7 @@ struct SceneViewerScreen: View {
 
     @StateObject private var model: SceneViewerModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var mode = NavigationMode.orbit
     // Splat3D scenes are +Y up. SplatKit reads SPZ as +Y down (World Labs'
     // convention) and flips it, so start with the picture turned back.
@@ -75,19 +76,37 @@ struct SceneViewerScreen: View {
                 }
 
         case .undrawable(let bytes):
-            Notice(
-                symbol: "iphone.slash",
-                title: "Downloaded, but not drawn here",
-                detail: "Got \(bytes.formatted(.byteCount(style: .file))) of SPZ, but SplatKit couldn't start Metal. "
-                    + "It needs a physical device with an A14 or M1 chip or newer (Apple GPU family 7), so the "
-                    + "Simulator never draws; on such a device, its Metal setup failed."
-            )
+            scrollingIfNeeded {
+                Notice(
+                    symbol: "iphone.slash",
+                    title: "Downloaded, but not drawn here",
+                    detail: "Got \(bytes.formatted(.byteCount(style: .file))) of SPZ, but SplatKit couldn't start Metal. "
+                        + "It needs a physical device with an A14 or M1 chip or newer (Apple GPU family 7), so the "
+                        + "Simulator never draws; on such a device, its Metal setup failed."
+                )
+            }
 
         case .failed(let failure):
-            VStack(spacing: 16) {
-                Notice(symbol: "exclamationmark.triangle", title: failure.title, detail: failure.detail)
-                failureAction(failure)
-                    .frame(maxWidth: Self.actionWidth)
+            scrollingIfNeeded {
+                VStack(spacing: 16) {
+                    Notice(symbol: "exclamationmark.triangle", title: failure.title, detail: failure.detail)
+                    failureAction(failure)
+                        // At accessibility sizes the label needs the width.
+                        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : Self.actionWidth)
+                        .padding(.horizontal, Hairline.margin)
+                }
+            }
+        }
+    }
+
+    /// A message centred on screen, which scrolls when it doesn't fit, as at
+    /// the largest text sizes, where it was cut off.
+    private func scrollingIfNeeded<Message: View>(@ViewBuilder _ message: () -> Message) -> some View {
+        let message = message()
+        return ViewThatFits(in: .vertical) {
+            message
+            ScrollView {
+                message
             }
         }
     }

@@ -21,7 +21,8 @@ struct PreviewHarness: View {
     }
 
     /// Every state, in screenshot order. A state ending in
-    /// `-accessibility` is the same state at the largest text size.
+    /// `-accessibility` is the same state at the largest text size,
+    /// scrolled to the middle.
     static let states = [
         "home", "home-first-run", "home-no-lidar", "home-camera-off", "home-no-key", "home-deleted",
         "home-accessibility",
@@ -42,8 +43,11 @@ struct PreviewHarness: View {
 
     var body: some View {
         if state.hasSuffix(Self.accessibilitySuffix) {
+            // Scrolled to the middle: at this size the top is all headline,
+            // and the preset tabs and run steps are further down.
             screen(String(state.dropLast(Self.accessibilitySuffix.count)))
                 .dynamicTypeSize(.accessibility5)
+                .defaultScrollAnchor(.center)
         } else {
             screen(state)
         }

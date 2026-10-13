@@ -247,13 +247,27 @@ struct FactRow<Value: View>: View {
     let label: String
     @ViewBuilder let value: Value
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            MonoLabel(label)
-                .frame(minWidth: 84, alignment: .leading)
-            value
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .multilineTextAlignment(.trailing)
+        Group {
+            // At accessibility sizes the label goes above its value: side by
+            // side, labels broke mid-word ("CHARG ES").
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    MonoLabel(label)
+                    value
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    MonoLabel(label)
+                        .frame(minWidth: 84, alignment: .leading)
+                    value
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
@@ -672,12 +686,14 @@ extension Hairline {
 
     /// Navigation bars in Hairline type and colors: paper ground, a rule
     /// beneath, Hanken titles.
+    @MainActor
     static func applyNavigationBarAppearance() {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = Palette.UI.paper
         appearance.shadowColor = Palette.UI.rule
-        // Titles follow Dynamic Type, as TypeStyle does in SwiftUI.
+        // Titles follow Dynamic Type, as TypeStyle does in SwiftUI, at the
+        // text size the bars are made with.
         appearance.titleTextAttributes = [
             .font: scaledFont(.navigationTitle, maximum: inlineTitleMaximum),
             .foregroundColor: Palette.UI.ink,
@@ -693,12 +709,16 @@ extension Hairline {
     }
 
     /// A style's font at the reader's text size, at most `maximum` points.
+    /// The size is the app's, not the current traits': those left the
+    /// titles at the default size.
+    @MainActor
     private static func scaledFont(_ style: TypeStyle, maximum: CGFloat? = nil) -> UIFont {
         let font = Typeface.font(style.face, size: style.size, weight: style.weight)
+        let traits = UITraitCollection(preferredContentSizeCategory: UIApplication.shared.preferredContentSizeCategory)
         let metrics = UIFontMetrics(forTextStyle: style.scalesLike)
         guard let maximum else {
-            return metrics.scaledFont(for: font)
+            return metrics.scaledFont(for: font, compatibleWith: traits)
         }
-        return metrics.scaledFont(for: font, maximumPointSize: maximum)
+        return metrics.scaledFont(for: font, maximumPointSize: maximum, compatibleWith: traits)
     }
 }

@@ -14,6 +14,7 @@ struct RecentScenesView: View {
 
     @StateObject private var model: RecentScenesModel
     @State private var pendingDelete: SplatScene?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init() {
         _model = StateObject(wrappedValue: RecentScenesModel())
@@ -89,7 +90,11 @@ struct RecentScenesView: View {
                 HStack {
                     MonoLabel("Scene")
                     Spacer()
-                    MonoLabel("Status")
+                    // At accessibility sizes each row shows its status under
+                    // the details, so there is no status column.
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        MonoLabel("Status")
+                    }
                 }
                 .padding(.bottom, 6)
                 .overlay(alignment: .bottom) { Rule(color: Palette.ink) }
@@ -157,6 +162,8 @@ private struct SceneRow: View {
     private static let thumbnailSize: CGFloat = 52
     private static let idPrefix = 8
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         HStack(spacing: 12) {
             SceneThumbnail(scene: scene, store: thumbnails)
@@ -164,24 +171,35 @@ private struct SceneRow: View {
                 .clipShape(Hairline.shape)
                 .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
 
+            // At accessibility sizes the text takes the row's width, whole,
+            // and the status goes under it: beside it, it broke mid-word.
             VStack(alignment: .leading, spacing: 4) {
                 Text(scene.displayTitle)
                     .typeStyle(.bodyStrong)
                     .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 Text(details)
                     .typeStyle(.code)
                     .foregroundStyle(Palette.graphite)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                if dynamicTypeSize.isAccessibilitySize {
+                    status
+                }
             }
 
             Spacer(minLength: 8)
 
-            StatusLabel(state: scene.status.dot(percent: scene.processingPct), text: scene.status.shortName)
+            if !dynamicTypeSize.isAccessibilitySize {
+                status
+            }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityHint(scene.isComplete ? "Opens the scene in 3D" : "")
+    }
+
+    private var status: some View {
+        StatusLabel(state: scene.status.dot(percent: scene.processingPct), text: scene.status.shortName)
     }
 
     /// "a1b2c3d4 · 2 days ago · 1.9M splats".
