@@ -30,6 +30,16 @@ jobs:
       - name: Swift 6 callers
         run: swift build --package-path Tests/ConcurrencyCheck
 
+      # The example app uses iOS 26's Liquid Glass behind availability
+      # checks, so it needs the iOS 26 SDK. The package above stays on 16.4,
+      # its toolchain floor. Pinned like 16.4; the listing shows what else
+      # the image has when this one goes.
+      - name: Select Xcode for the example app
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
+          xcodebuild -version
+
       # Unsigned simulator build: proves the example compiles against this
       # revision of the package without any signing identity.
       - name: Example app (Simulator)
@@ -49,3 +59,24 @@ jobs:
           -scheme SplatCapture
           -destination 'generic/platform=iOS'
           CODE_SIGNING_ALLOWED=NO
+
+      # What TestFlight gets: Release for devices, unsigned.
+      - name: Example app (device, Release)
+        run: >
+          xcodebuild build
+          -project Examples/SplatCapture/SplatCapture.xcodeproj
+          -scheme SplatCapture
+          -configuration Release
+          -destination 'generic/platform=iOS'
+          -derivedDataPath "$RUNNER_TEMP/release"
+          CODE_SIGNING_ALLOWED=NO
+
+      # The state previews are Debug only (#if DEBUG in PreviewHarness.swift).
+      - name: Release leaves out the previews
+        run: |
+          binary="$RUNNER_TEMP/release/Build/Products/Release-iphoneos/SplatCapture.app/SplatCapture"
+          test -f "$binary"
+          if grep -q SplatPreviewState "$binary"; then
+            echo "::error::The Release binary contains SplatPreviewState"
+            exit 1
+          fi
