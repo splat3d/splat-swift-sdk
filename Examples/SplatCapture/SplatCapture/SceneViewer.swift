@@ -22,15 +22,13 @@ struct SceneViewerScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var mode = NavigationMode.orbit
-    // Splat3D scenes are +Y up. SplatKit reads SPZ as +Y down (World Labs'
-    // convention) and flips it, so start with the picture turned back.
-    @State private var flipped = true
+    /// Flip, which the user turns on: off shows the scene upright.
+    @State private var userFlipped = false
     @State private var walkSpeed: Float = 0
     @State private var resetCount = 0
 
     /// Scene units per second while a move arrow is held.
     private static let walkingSpeed: Float = 0.6
-    private static let actionWidth: CGFloat = 220
 
     init(sceneID: String, title: String, webURL: URL?) {
         self.title = title
@@ -52,10 +50,17 @@ struct SceneViewerScreen: View {
             Color.black.ignoresSafeArea()
             content
         }
-        .environment(\.colorScheme, .dark)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .darkNavigationBar()
+        .toolbar {
+            if showsControls {
+                controls
+            }
+        }
+        .darkBars()
+        // Outside the toolbar, so its controls are dark too: in light mode
+        // the segmented control drew black labels on the dark glass.
+        .environment(\.colorScheme, .dark)
         .task { await model.load() }
         .onDisappear { model.close() }
     }
@@ -90,12 +95,18 @@ struct SceneViewerScreen: View {
                 VStack(spacing: 16) {
                     Notice(symbol: "exclamationmark.triangle", title: failure.title, detail: failure.detail)
                     failureAction(failure)
-                        // At accessibility sizes the label needs the width.
-                        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : Self.actionWidth)
                         .padding(.horizontal, Theme.margin)
                 }
             }
         }
+    }
+
+    /// The controls show once the scene is on screen.
+    private var showsControls: Bool {
+        guard case .showing = model.phase else {
+            return false
+        }
+        return model.worldReady
     }
 
     /// A message centred on screen, which scrolls when it doesn't fit, as at
@@ -111,17 +122,18 @@ struct SceneViewerScreen: View {
     }
 
     /// Try again when it can go differently. When the server would answer
-    /// the same, the scene on splat-3d.com, whose viewer needs no SPZ.
+    /// the same, the scene on splat-3d.com, whose viewer needs no SPZ. A
+    /// button on the message, so bordered, not glass.
     @ViewBuilder
     private func failureAction(_ failure: ViewerFailure) -> some View {
         if failure.canRetry {
             Button("Try again") {
                 Task { await model.retry() }
             }
-            .actionStyle(.primary)
+            .actionStyle(.secondary, width: .fitted)
         } else if let webURL {
             Link("Open on splat-3d.com", destination: webURL)
-                .actionStyle(.primary)
+                .actionStyle(.secondary, width: .fitted)
         }
     }
 
@@ -129,13 +141,19 @@ struct SceneViewerScreen: View {
         SplatWorldView(
             file: file,
             mode: mode,
-            flipped: flipped,
+            // SplatKit reads SPZ as +Y down (World Labs' convention) and
+            // turns it over; Splat3D scenes are +Y up, so the view turns
+            // it back unless the user flips it.
+            flipped: !userFlipped,
             walkSpeed: walkSpeed,
             resetCount: resetCount,
             isActive: scenePhase == .active,
             onEvent: { model.handle($0) }
         )
         .ignoresSafeArea()
+        .overlay(alignment: .top) {
+            TopScrim()
+        }
         .overlay(alignment: .top) {
             #if DEBUG
             if let stats = model.stats {
@@ -144,67 +162,67 @@ struct SceneViewerScreen: View {
             #endif
         }
         .overlay(alignment: .bottom) {
-            if model.worldReady {
-                controls
+            if model.worldReady, mode == .look {
+                moveArrows
             }
         }
     }
 
     // MARK: Controls
 
-    /// Glass over the scene: the move arrows in Look mode, then the mode,
-    /// Flip and Reset. Neighbours blend on iOS 26.
-    private var controls: some View {
-        GlassGroup(spacing: Self.controlSpacing) {
-            VStack(spacing: 12) {
-                if mode == .look {
-                    HStack(spacing: 24) {
-                        holdToMove(symbol: "arrow.up", label: "Move forward", speed: Self.walkingSpeed)
-                        holdToMove(symbol: "arrow.down", label: "Move back", speed: -Self.walkingSpeed)
-                    }
-                }
+    /// The mode, Flip and Reset, in the toolbar, which the system draws: in
+    /// glass on iOS 26, grouped, over the scene.
+    @ToolbarContentBuilder
+    private var controls: some ToolbarContent {
+        ToolbarItemGroup(placement: .bottomBar) {
+            modePicker
+            Spacer()
+            // Lit only once the user flips the scene.
+            Toggle(isOn: $userFlipped) {
+                Label("Flip", systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down")
+            }
+            .toggleStyle(.button)
+            Button {
+                resetCount += 1
+            } label: {
+                Label("Reset", systemImage: "scope")
+            }
+        }
+    }
 
-                HStack(spacing: Self.controlSpacing) {
-                    Choice(label: "Navigation", options: NavigationMode.allCases, selection: modeSelection) { $0.rawValue.capitalized }
-                        .padding(Self.choiceInset)
-                        .frame(minHeight: Self.controlSize)
-                        .glassSurface(in: Capsule())
+    /// Orbit or Look: segments, or at accessibility sizes, where segments
+    /// truncate, a menu.
+    @ViewBuilder
+    private var modePicker: some View {
+        let picker = Picker("Navigation", selection: modeSelection) {
+            ForEach(NavigationMode.allCases) { mode in
+                Text(mode.rawValue.capitalized)
+                    .tag(mode)
+            }
+        }
+        if dynamicTypeSize.isAccessibilitySize {
+            picker
+                .pickerStyle(.menu)
+                .fixedSize()
+        } else {
+            picker
+                .pickerStyle(.segmented)
+                .fixedSize()
+        }
+    }
 
-                    iconButton("Flip", symbol: "arrow.up.arrow.down", isOn: flipped) {
-                        flipped.toggle()
-                    }
-                    .accessibilityAddTraits(flipped ? .isSelected : [])
-
-                    iconButton("Reset", symbol: "scope", isOn: false) {
-                        resetCount += 1
-                    }
-                }
+    /// The move arrows in Look mode, glass over the scene, above the toolbar.
+    private var moveArrows: some View {
+        GlassGroup(spacing: Self.arrowSpacing) {
+            HStack(spacing: Self.arrowSpacing) {
+                holdToMove(symbol: "arrow.up", label: "Move forward", speed: Self.walkingSpeed)
+                holdToMove(symbol: "arrow.down", label: "Move back", speed: -Self.walkingSpeed)
             }
         }
         .padding()
     }
 
-    /// A round glass button, tinted with the accent while its setting is on.
-    private func iconButton(_ label: String, symbol: String, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(label, systemImage: symbol)
-                .labelStyle(.iconOnly)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(isOn ? Palette.onAccent : .primary)
-                .frame(width: Self.controlSize, height: Self.controlSize)
-                // The whole circle takes the tap, not just the icon.
-                .contentShape(Circle())
-                .glassSurface(in: Circle(), tint: isOn ? Palette.accent : nil, interaction: .interactive)
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Side of the round Flip and Reset buttons, and height of the mode
-    /// control: a full touch target and a little more.
-    private static let controlSize: CGFloat = 48
-    private static let controlSpacing: CGFloat = 10
-    /// Space between the mode control and its glass.
-    private static let choiceInset: CGFloat = 6
+    private static let arrowSpacing: CGFloat = 24
 
     /// The mode picker's selection. A switch hides the move arrows, so one held
     /// through it never reports its release: stop walking in the same update.
@@ -519,28 +537,71 @@ struct ViewerFailure {
 
 // MARK: - Small views
 
-/// Bytes downloaded so far, as a bar once the total is known.
+/// Bytes downloaded so far, as a bar once the total is known: the words in
+/// the system font, the sizes in mono.
 private struct DownloadProgress: View {
     let received: Int64
     let expected: Int64?
+
+    private static let barWidth: CGFloat = 240
 
     var body: some View {
         VStack(spacing: 12) {
             if let expected {
                 RunProgressBar(label: "Download", fraction: Double(min(received, expected)) / Double(expected))
-                    .frame(maxWidth: 240)
-                Text("Downloading SPZ · \(Self.format(received)) of \(Self.format(expected))")
+                    .frame(maxWidth: Self.barWidth)
             } else {
                 ProgressView()
-                Text(received > 0 ? "Downloading SPZ · \(Self.format(received))" : "Requesting SPZ…")
+            }
+            Text("Downloading scene")
+                .font(.subheadline)
+            if let amount {
+                Text(amount)
+                    .typeStyle(.data)
+                    .foregroundStyle(.secondary)
             }
         }
-        .typeStyle(.data)
+        .multilineTextAlignment(.center)
         .tint(Palette.accent)
+    }
+
+    /// "12 MB of 41 MB", or "12 MB" with no total; nothing before the first
+    /// bytes.
+    private var amount: String? {
+        if let expected {
+            return "\(Self.format(received)) of \(Self.format(expected))"
+        }
+        return received > 0 ? Self.format(received) : nil
     }
 
     private static func format(_ bytes: Int64) -> String {
         bytes.formatted(.byteCount(style: .file))
+    }
+}
+
+/// Dims the top of the picture under the navigation bar, so the white title
+/// and status bar stay legible over a bright scene: on iOS 26 the bar draws
+/// no glass behind the title. Before it, the bar is solid black.
+private struct TopScrim: View {
+
+    /// From the top of the screen, past the navigation bar's title.
+    private static let height: CGFloat = 140
+    /// About 60% black behind the title: white over it measures 5.7:1 on a
+    /// white scene.
+    private static let stops: [Gradient.Stop] = [
+        .init(color: .black.opacity(0.65), location: 0),
+        .init(color: .black.opacity(0.6), location: 0.65),
+        .init(color: .clear, location: 1),
+    ]
+
+    var body: some View {
+        if #available(iOS 26, *) {
+            LinearGradient(stops: Self.stops, startPoint: .top, endPoint: .bottom)
+                .frame(height: Self.height)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }
 

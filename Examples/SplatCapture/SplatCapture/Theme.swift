@@ -21,8 +21,7 @@ import CoreText
 //   .actionBar { } ──> a screen's actions, pinned over the content
 //   MoreMenu ────> a screen's rarer actions, in the toolbar
 //   .glassSurface(in:), GlassGroup ──> readouts and controls over the camera
-//   Choice ──────> a segmented control, a 2-column grid at large text
-//   .darkNavigationBar() ──> the viewer's bar
+//   .darkBars() ──> the viewer's navigation bar and toolbar
 //   Mark ────────> mark G·5, for large placeholders
 //
 // Each helper switches on the OS once, so views never do:
@@ -685,84 +684,28 @@ struct GlassGroup<Content: View>: View {
     }
 }
 
-// MARK: - Navigation bar
+// MARK: - Dark bars
 
 extension View {
-    /// A navigation bar for a screen that is always dark, such as the
-    /// viewer: white title and buttons in either appearance. On iOS 26 the
-    /// bar stays glass over the picture; before it, it is solid black.
-    func darkNavigationBar() -> some View {
-        modifier(DarkNavigationBar())
+    /// The navigation bar and toolbar of a screen that is always dark, such
+    /// as the viewer: white titles and buttons in either appearance. On iOS
+    /// 26 both stay glass over the picture; before it, they are solid black.
+    func darkBars() -> some View {
+        modifier(DarkBars())
     }
 }
 
-private struct DarkNavigationBar: ViewModifier {
+private struct DarkBars: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
             content
-                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar, .bottomBar)
         } else {
             content
-                .toolbarBackground(.black, for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbarBackground(.black, for: .navigationBar, .bottomBar)
+                .toolbarBackground(.visible, for: .navigationBar, .bottomBar)
+                .toolbarColorScheme(.dark, for: .navigationBar, .bottomBar)
         }
-    }
-}
-
-// MARK: - Choice
-
-/// Pick one of a few options: a segmented control, or at accessibility
-/// sizes, where its segments truncate, a grid of capsule buttons two a row.
-struct Choice<Value: Hashable>: View {
-    let label: String
-    let options: [Value]
-    @Binding var selection: Value
-    let title: (Value) -> String
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    private static var spacing: CGFloat { 8 }
-    private static var columns: Int { 2 }
-    /// The largest text a grid button's label takes. Larger, "Standard"
-    /// truncated in half a phone's width, beside a whole "Fast".
-    private static var largestLabel: DynamicTypeSize { .accessibility1 }
-    /// A last resort, for a narrower screen.
-    private static var minimumScale: CGFloat { 0.8 }
-
-    var body: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            let column = GridItem(.flexible(), spacing: Self.spacing)
-            LazyVGrid(columns: Array(repeating: column, count: Self.columns), spacing: Self.spacing) {
-                ForEach(options, id: \.self) { option in
-                    gridButton(option)
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(label)
-        } else {
-            Picker(label, selection: $selection) {
-                ForEach(options, id: \.self) { option in
-                    Text(title(option))
-                        .tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
-        }
-    }
-
-    private func gridButton(_ option: Value) -> some View {
-        let selected = option == selection
-        return Button {
-            selection = option
-        } label: {
-            Text(title(option))
-                .lineLimit(1)
-                .minimumScaleFactor(Self.minimumScale)
-                .dynamicTypeSize(...Self.largestLabel)
-        }
-        .actionStyle(selected ? .primary : .secondary)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
