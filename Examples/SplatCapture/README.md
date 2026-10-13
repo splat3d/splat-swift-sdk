@@ -44,8 +44,9 @@ twice.
 - iOS 17.0+. SplatKit requires it; the Splat3D SDK itself still supports iOS 16
 - Camera and motion permissions are requested on first launch
 
-On a device without LiDAR, the start screen says capture needs it and keeps
-**Start capture** off. Scenes and the viewer still work.
+The app requires only ARKit to install. On a device without LiDAR, the start
+screen says capture needs it and keeps **Start capture** off. Scenes and the
+viewer still work.
 
 **View in 3D** draws with Metal on Apple GPU family 7: A14, M1 or newer, on a
 physical device. The app goes by SplatKit's `SplatMetalView.isAvailable`,
