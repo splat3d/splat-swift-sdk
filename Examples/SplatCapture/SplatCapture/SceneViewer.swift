@@ -39,10 +39,11 @@ struct SceneViewerScreen: View {
     }
 
     #if DEBUG
-    init(title: String, webURL: URL?, previewing model: SceneViewerModel) {
+    init(title: String, webURL: URL?, previewing model: SceneViewerModel, mode: NavigationMode = .orbit) {
         self.title = title
         self.webURL = webURL
         _model = StateObject(wrappedValue: model)
+        _mode = State(initialValue: mode)
     }
     #endif
 
@@ -54,9 +55,7 @@ struct SceneViewerScreen: View {
         .environment(\.colorScheme, .dark)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.black, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .darkNavigationBar()
         .task { await model.load() }
         .onDisappear { model.close() }
     }
@@ -93,7 +92,7 @@ struct SceneViewerScreen: View {
                     failureAction(failure)
                         // At accessibility sizes the label needs the width.
                         .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : Self.actionWidth)
-                        .padding(.horizontal, Hairline.margin)
+                        .padding(.horizontal, Theme.margin)
                 }
             }
         }
@@ -119,10 +118,10 @@ struct SceneViewerScreen: View {
             Button("Try again") {
                 Task { await model.retry() }
             }
-            .buttonStyle(.primary)
+            .actionStyle(.primary)
         } else if let webURL {
             Link("Open on splat-3d.com", destination: webURL)
-                .buttonStyle(.primary)
+                .actionStyle(.primary)
         }
     }
 
@@ -153,55 +152,59 @@ struct SceneViewerScreen: View {
 
     // MARK: Controls
 
+    /// Glass over the scene: the move arrows in Look mode, then the mode,
+    /// Flip and Reset. Neighbours blend on iOS 26.
     private var controls: some View {
-        VStack(spacing: 12) {
-            if mode == .look {
-                HStack(spacing: 24) {
-                    holdToMove(symbol: "arrow.up", label: "Move forward", speed: Self.walkingSpeed)
-                    holdToMove(symbol: "arrow.down", label: "Move back", speed: -Self.walkingSpeed)
+        GlassGroup(spacing: Self.controlSpacing) {
+            VStack(spacing: 12) {
+                if mode == .look {
+                    HStack(spacing: 24) {
+                        holdToMove(symbol: "arrow.up", label: "Move forward", speed: Self.walkingSpeed)
+                        holdToMove(symbol: "arrow.down", label: "Move back", speed: -Self.walkingSpeed)
+                    }
+                }
+
+                HStack(spacing: Self.controlSpacing) {
+                    Choice(label: "Navigation", options: NavigationMode.allCases, selection: modeSelection) { $0.rawValue.capitalized }
+                        .padding(Self.choiceInset)
+                        .frame(minHeight: Self.controlSize)
+                        .glassSurface(in: Capsule())
+
+                    iconButton("Flip", symbol: "arrow.up.arrow.down", isOn: flipped) {
+                        flipped.toggle()
+                    }
+                    .accessibilityAddTraits(flipped ? .isSelected : [])
+
+                    iconButton("Reset", symbol: "scope", isOn: false) {
+                        resetCount += 1
+                    }
                 }
             }
-
-            HStack(spacing: 6) {
-                SquareTabs(options: NavigationMode.allCases, selection: modeSelection) { $0.rawValue }
-
-                Button {
-                    flipped.toggle()
-                } label: {
-                    Label("Flip", systemImage: "arrow.up.arrow.down")
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(flipped ? Palette.ink : Palette.graphite)
-                        .frame(width: Self.controlSize, height: Self.controlSize)
-                        // The whole square takes the tap, not just the icon.
-                        .contentShape(Hairline.shape)
-                        .overlay(Hairline.shape.strokeBorder(flipped ? Palette.ink : Palette.rule, lineWidth: Hairline.rule))
-                }
-                .accessibilityAddTraits(flipped ? .isSelected : [])
-
-                Button {
-                    resetCount += 1
-                } label: {
-                    Label("Reset", systemImage: "scope")
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(Palette.ink)
-                        .frame(width: Self.controlSize, height: Self.controlSize)
-                        .contentShape(Hairline.shape)
-                        .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
-                }
-            }
-            .buttonStyle(.plain)
         }
-        .padding(10)
-        .background(Palette.paper.opacity(Self.panelOpacity), in: Hairline.shape)
-        .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
         .padding()
     }
 
-    /// Side of the square Flip and Reset buttons: a full touch target, as
-    /// tall as the tabs.
-    private static let controlSize = Hairline.touchTarget
-    /// The controls sit over the scene: mostly opaque, never glass.
-    private static let panelOpacity = 0.9
+    /// A round glass button, tinted with the accent while its setting is on.
+    private func iconButton(_ label: String, symbol: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(label, systemImage: symbol)
+                .labelStyle(.iconOnly)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(isOn ? Palette.onAccent : .primary)
+                .frame(width: Self.controlSize, height: Self.controlSize)
+                // The whole circle takes the tap, not just the icon.
+                .contentShape(Circle())
+                .glassSurface(in: Circle(), tint: isOn ? Palette.accent : nil, interaction: .interactive)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Side of the round Flip and Reset buttons, and height of the mode
+    /// control: a full touch target and a little more.
+    private static let controlSize: CGFloat = 48
+    private static let controlSpacing: CGFloat = 10
+    /// Space between the mode control and its glass.
+    private static let choiceInset: CGFloat = 6
 
     /// The mode picker's selection. A switch hides the move arrows, so one held
     /// through it never reports its release: stop walking in the same update.
@@ -262,10 +265,13 @@ final class SceneViewerModel: ObservableObject {
     }
 
     #if DEBUG
-    /// Shows `phase` and never downloads, for PreviewHarness.
-    init(previewing phase: Phase) {
+    /// Shows `phase` and never downloads, for PreviewHarness. With
+    /// `worldReady`, the controls show over the world, which ignores
+    /// SplatKit's events: on the Simulator it draws nothing.
+    init(previewing phase: Phase, worldReady: Bool = false) {
         sceneID = ""
         self.phase = phase
+        self.worldReady = worldReady
         isPreview = true
     }
 
@@ -351,6 +357,11 @@ final class SceneViewerModel: ObservableObject {
     }
 
     func handle(_ event: WorldEvent) {
+        #if DEBUG
+        guard !isPreview else {
+            return
+        }
+        #endif
         switch event {
         case .unavailable:
             guard case .showing(_, let bytes) = phase else {
@@ -516,7 +527,7 @@ private struct DownloadProgress: View {
     var body: some View {
         VStack(spacing: 12) {
             if let expected {
-                HairlineProgress(label: "Download", fraction: Double(min(received, expected)) / Double(expected))
+                RunProgressBar(label: "Download", fraction: Double(min(received, expected)) / Double(expected))
                     .frame(maxWidth: 240)
                 Text("Downloading SPZ · \(Self.format(received)) of \(Self.format(expected))")
             } else {
@@ -525,7 +536,6 @@ private struct DownloadProgress: View {
             }
         }
         .typeStyle(.data)
-        .foregroundStyle(Palette.ink)
         .tint(Palette.accent)
     }
 
@@ -545,18 +555,17 @@ private struct Notice: View {
             if let symbol {
                 Image(systemName: symbol)
                     .font(.largeTitle)
-                    .foregroundStyle(Palette.graphite)
+                    .foregroundStyle(.secondary)
             } else {
                 ProgressView()
             }
             Text(title)
                 .typeStyle(.title)
             Text(detail)
-                .typeStyle(.footnote)
-                .foregroundStyle(Palette.graphite)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
         .multilineTextAlignment(.center)
-        .foregroundStyle(Palette.ink)
         .tint(Palette.accent)
         .padding(32)
     }
@@ -569,11 +578,10 @@ private struct StatsLine: View {
 
     var body: some View {
         Text("\(Int(stats.fps.rounded())) fps · \(Self.count(stats.drawnSplatCount)) of \(Self.count(stats.splatCount)) splats")
-            .typeStyle(.code)
-            .foregroundStyle(Palette.ink)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Palette.paper.opacity(0.8), in: Hairline.shape)
+            .typeStyle(.smallData)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .glassSurface(in: Capsule())
             .padding(.top, 8)
     }
 
@@ -584,18 +592,18 @@ private struct StatsLine: View {
 #endif
 
 /// Reports presses: `onHold(true)` while held, `onHold(false)` on release.
+/// A glass circle, filled with the accent while held.
 private struct HoldButtonStyle: ButtonStyle {
     let onHold: (Bool) -> Void
 
     private static let size: CGFloat = 56
-    private static let restingOpacity = 0.9
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(configuration.isPressed ? Palette.onAccent : Palette.ink)
+            .foregroundStyle(configuration.isPressed ? Palette.onAccent : .primary)
             .frame(width: Self.size, height: Self.size)
-            .background(configuration.isPressed ? Palette.accent : Palette.paper.opacity(Self.restingOpacity), in: Hairline.shape)
-            .overlay(Hairline.shape.strokeBorder(configuration.isPressed ? Palette.accent : Palette.rule, lineWidth: Hairline.rule))
+            .contentShape(Circle())
+            .glassSurface(in: Circle(), tint: configuration.isPressed ? Palette.accent : nil, interaction: .interactive)
             .onChange(of: configuration.isPressed) { _, pressed in
                 onHold(pressed)
             }

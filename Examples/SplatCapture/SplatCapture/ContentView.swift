@@ -203,17 +203,17 @@ struct CaptureRoot: View {
                 ScanningView(model: model, preset: preset)
             } else {
                 NavigationStack {
+                    // Each screen sets its own title: large on the start
+                    // screen, inline on the rest.
                     screen
                         .toolbar {
-                            ToolbarItem(placement: .topBarLeading) {
-                                Logo()
-                            }
                             ToolbarItem(placement: .topBarTrailing) {
-                                NavigationLink("Scenes", value: Route.recentScenes)
-                                    .typeStyle(.button)
+                                NavigationLink(value: Route.recentScenes) {
+                                    Label("Scenes", systemImage: "square.stack.3d.up")
+                                        .labelStyle(.titleAndIcon)
+                                }
                             }
                         }
-                        .navigationBarTitleDisplayMode(.inline)
                         .navigationDestination(for: Route.self) { route in
                             switch route {
                             case .recentScenes:
@@ -283,60 +283,61 @@ struct HomeView: View {
 
     var body: some View {
         Screen(
-            eyebrow: "Capture",
-            title: "Scan a space in 3D",
+            title: "Splat Capture",
+            titleDisplay: .large,
+            headline: "Scan a space in 3D",
             lead: "Walk slowly around what you want to keep, for 15 to 60 seconds. SplatCapture records video and ARKit camera poses, and Splat3D turns them into a Gaussian splat scene."
         ) {
             if let notice = model.notice {
-                NoticeBox(tone: notice.isError ? .alarm : .done, title: notice.title, detail: notice.detail) {
+                NoticeCard(tone: notice.isError ? .alarm : .done, title: notice.title, detail: notice.detail) {
                     Button("Dismiss") {
                         model.notice = nil
                     }
-                    .buttonStyle(.ghost)
+                    .actionStyle(.secondary, width: .fitted)
                 }
             }
 
             blocker
 
-            Panel {
-                VStack(alignment: .leading, spacing: 10) {
-                    MonoLabel("Preset")
-                    SquareTabs(options: ScenePreset.allCases, selection: $preset) { $0.rawValue }
+            CardSection(
+                header: "Preset",
+                footer: preset == .fast ? "The quickest and cheapest: good for trying things out." : "Higher presets take longer and cost more credits."
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Choice(label: "Preset", options: ScenePreset.allCases, selection: $preset) { $0.title }
                     Text(preset.summary)
                         .typeStyle(.data)
-                        .foregroundStyle(Palette.ink)
-                    Text(preset == .fast ? "The quickest and cheapest: good for trying things out." : "Higher presets take longer and cost more credits.")
-                        .typeStyle(.footnote)
-                        .foregroundStyle(Palette.graphite)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(14)
+                .padding(Theme.rowInset)
             }
 
-            Panel {
+            CardSection(header: "Requirements") {
                 FactRow(label: "LiDAR") {
                     StatusLabel(state: model.hasLiDAR ? .done : .failed, text: model.hasLiDAR ? "Ready" : "Not on this device")
                 }
-                Rule()
+                CardDivider()
                 FactRow(label: "Camera") {
                     StatusLabel(state: cameraDot, text: cameraText)
                 }
-                Rule()
+                CardDivider()
                 FactRow(label: "API key") {
                     StatusLabel(state: model.hasAPIKey ? .done : .failed, text: model.hasAPIKey ? "Set" : "Missing")
                 }
             }
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 Button("Start capture") {
                     Task { await model.startScan() }
                 }
-                .buttonStyle(.primary)
+                .actionStyle(.primary)
                 .disabled(!canCapture)
 
                 NavigationLink(value: Route.recentScenes) {
                     Text("Your scenes")
                 }
-                .buttonStyle(.ghost)
+                .actionStyle(.secondary)
             }
         }
     }
@@ -375,15 +376,15 @@ struct HomeView: View {
     @ViewBuilder
     private var blocker: some View {
         if !model.hasAPIKey {
-            NoticeBox(tone: .alarm, title: "No API key", detail: missingAPIKeyMessage)
+            NoticeCard(tone: .alarm, title: "No API key", detail: missingAPIKeyMessage)
         } else if !model.hasLiDAR {
-            NoticeBox(
+            NoticeCard(
                 tone: .neutral,
                 title: "This device has no LiDAR scanner",
                 detail: "Capture needs one: an iPhone 12 Pro or newer, or an iPad Pro with LiDAR. Your scenes still open here, in 3D."
             )
         } else if cameraDenied {
-            NoticeBox(
+            NoticeCard(
                 tone: .alarm,
                 title: "Camera access is off",
                 detail: "SplatCapture records video to build the scene. Turn on Camera for SplatCapture in Settings."
@@ -394,7 +395,7 @@ struct HomeView: View {
                     }
                     UIApplication.shared.open(settings)
                 }
-                .buttonStyle(.ghost)
+                .actionStyle(.secondary, width: .fitted)
             }
         }
     }
@@ -402,7 +403,8 @@ struct HomeView: View {
 
 // MARK: - Scanning
 
-/// The camera with the scanned mesh, and the capture's numbers over it.
+/// The camera with the scanned mesh, and the capture's numbers and controls
+/// floating over it on glass.
 struct ScanningView: View {
 
     @ObservedObject var model: CaptureModel
@@ -412,8 +414,10 @@ struct ScanningView: View {
     @State private var isStopping = false
     @State private var confirmingCancel = false
 
-    /// The overlays sit on the camera image: mostly opaque, never glass.
-    private static let overlayOpacity = 0.85
+    /// Space between glass surfaces; closer ones blend on iOS 26.
+    private static let glassSpacing: CGFloat = 12
+    private static let readoutCorner: CGFloat = 20
+    private static let recordingDot: CGFloat = 10
 
     var body: some View {
         ZStack {
@@ -425,74 +429,113 @@ struct ScanningView: View {
                     .ignoresSafeArea()
             }
 
-            VStack(spacing: 12) {
-                HStack(alignment: .top) {
-                    overlay {
+            VStack(spacing: Self.glassSpacing) {
+                GlassGroup(spacing: Self.glassSpacing) {
+                    HStack(alignment: .top) {
                         HStack(spacing: 8) {
-                            // Recording: the accent, because it is moving.
-                            StatusDot(state: .running(1))
+                            // Recording.
+                            Circle()
+                                .fill(Palette.alarm)
+                                .frame(width: Self.recordingDot, height: Self.recordingDot)
+                                .accessibilityHidden(true)
                             Text(duration)
                                 .typeStyle(.data)
-                                .foregroundStyle(Palette.ink)
+                                .monospacedDigit()
                         }
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                    }
+                        .glassSurface(in: Capsule())
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Recording, \(duration)")
 
-                    Spacer()
+                        Spacer()
 
-                    overlay {
                         VStack(alignment: .trailing, spacing: 4) {
                             counter("Poses", model.poseCount)
                             counter("Frames", model.frameCount)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .glassSurface(in: RoundedRectangle(cornerRadius: Self.readoutCorner, style: .continuous))
                     }
                 }
 
                 Spacer()
 
-                if let tracking = model.tracking {
-                    overlay {
-                        StatusLabel(state: tracking.dot, text: tracking.text)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                GlassGroup(spacing: Self.glassSpacing) {
+                    VStack(spacing: Self.glassSpacing) {
+                        // Side by side; stacked when the text is too large.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                readouts
+                            }
+                            VStack(spacing: 8) {
+                                readouts
+                            }
+                        }
+
+                        // Side by side; stacked when the text is too large.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: Self.glassSpacing) {
+                                cancelButton
+                                    .fixedSize()
+                                stopButton
+                            }
+                            VStack(spacing: Self.glassSpacing) {
+                                stopButton
+                                cancelButton
+                            }
+                        }
                     }
-                }
-
-                Button("Stop and upload") {
-                    isStopping = true
-                    Task { await model.stopAndUpload(preset: preset) }
-                }
-                .buttonStyle(.primary)
-                .disabled(isStopping)
-
-                // A scan you don't want ends here, not as a scene.
-                Button("Cancel") {
-                    confirmingCancel = true
-                }
-                .buttonStyle(.ghost)
-                .background(Palette.paper.opacity(Self.overlayOpacity), in: Hairline.shape)
-                .disabled(isStopping)
-                .confirmationDialog("Discard this scan?", isPresented: $confirmingCancel, titleVisibility: .visible) {
-                    Button("Discard scan", role: .destructive) {
-                        isStopping = true
-                        Task { await model.cancelScan() }
-                    }
-                } message: {
-                    Text("The video and poses are deleted. Nothing is uploaded or charged.")
-                }
-
-                overlay {
-                    MonoLabel("Preset \(preset.rawValue)")
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
                 }
             }
-            .padding(Hairline.margin)
+            .padding(Theme.margin)
         }
         .environment(\.colorScheme, .dark)
+        .confirmationDialog("Discard this scan?", isPresented: $confirmingCancel, titleVisibility: .visible) {
+            Button("Discard scan", role: .destructive) {
+                isStopping = true
+                Task { await model.cancelScan() }
+            }
+        } message: {
+            Text("The video and poses are deleted. Nothing is uploaded or charged.")
+        }
+    }
+
+    /// ARKit's tracking and the preset, above the buttons.
+    @ViewBuilder
+    private var readouts: some View {
+        if let tracking = model.tracking {
+            StatusLabel(state: tracking.dot, text: tracking.text)
+                .font(.subheadline)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .glassSurface(in: Capsule())
+        }
+        Text("\(preset.title) preset")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .glassSurface(in: Capsule())
+    }
+
+    private var stopButton: some View {
+        Button("Stop and upload") {
+            isStopping = true
+            Task { await model.stopAndUpload(preset: preset) }
+        }
+        .actionStyle(.primary)
+        .disabled(isStopping)
+    }
+
+    /// A scan you don't want ends here, not as a scene.
+    private var cancelButton: some View {
+        Button("Cancel") {
+            confirmingCancel = true
+        }
+        .actionStyle(.secondary, width: .fitted)
+        .disabled(isStopping)
     }
 
     /// "1:05".
@@ -502,18 +545,23 @@ struct ScanningView: View {
     }
 
     private func counter(_ label: String, _ value: Int) -> some View {
-        HStack(spacing: 8) {
-            MonoLabel(label)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             Text(value.formatted())
                 .typeStyle(.data)
-                .foregroundStyle(Palette.ink)
                 .monospacedDigit()
         }
+        .accessibilityElement(children: .combine)
     }
+}
 
-    private func overlay<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .background(Palette.paper.opacity(Self.overlayOpacity), in: Hairline.shape)
-            .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
+// MARK: - Preset names
+
+private extension ScenePreset {
+    /// "Fast", for the preset control and the scan screen.
+    var title: String {
+        rawValue.capitalized
     }
 }

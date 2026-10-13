@@ -28,7 +28,6 @@ struct RecentScenesView: View {
 
     var body: some View {
         content
-            .background(Palette.paper)
             .navigationTitle("Scenes")
             .navigationBarTitleDisplayMode(.inline)
             .task { await model.load() }
@@ -51,141 +50,138 @@ struct RecentScenesView: View {
     private var content: some View {
         switch model.state {
         case .loading:
-            VStack(spacing: 12) {
-                ProgressView()
-                    .tint(Palette.accent)
-                MonoLabel("Loading scenes")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ProgressView("Loading scenes")
+                .tint(Palette.accent)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Palette.ground)
 
         case .failed(let message):
-            ScrollView {
-                NoticeBox(tone: .alarm, title: "Couldn't load scenes", detail: message) {
+            centered {
+                ContentUnavailableView {
+                    Label("Couldn't load scenes", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
                     Button("Try again") {
                         Task { await model.load() }
                     }
-                    .buttonStyle(.ghost)
+                    .actionStyle(.secondary, width: .fitted)
                 }
-                .padding(Hairline.margin)
             }
 
         case .loaded(let scenes) where scenes.isEmpty:
-            ScrollView {
-                NoticeBox(tone: .neutral, title: "No scenes yet", detail: "Capture one, or create one at splat-3d.com, and it shows here.")
-                    .padding(Hairline.margin)
+            centered {
+                ContentUnavailableView(
+                    "No scenes yet",
+                    systemImage: "square.stack.3d.up",
+                    description: Text("Capture one, or create one at splat-3d.com, and it shows here.")
+                )
             }
 
         case .loaded(let scenes):
             List {
                 if let deleteError = model.deleteError {
-                    NoticeBox(tone: .alarm, title: "Couldn't delete", detail: deleteError)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Palette.paper)
-                }
-
-                // Column heads over an ink rule, as tables are on splat-3d.com.
-                HStack {
-                    MonoLabel("Scene")
-                    Spacer()
-                    // At accessibility sizes each row shows its status under
-                    // the details, so there is no status column.
-                    if !dynamicTypeSize.isAccessibilitySize {
-                        MonoLabel("Status")
+                    Section {
+                        NoticeCard(tone: .alarm, title: "Couldn't delete", detail: deleteError)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
                     }
                 }
-                .padding(.bottom, 6)
-                .overlay(alignment: .bottom) { Rule(color: Palette.ink) }
-                .listRowSeparator(.hidden)
-                .listRowBackground(Palette.paper)
 
-                ForEach(scenes) { scene in
-                    row(scene)
+                Section {
+                    ForEach(scenes) { scene in
+                        row(scene)
+                    }
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            .listStyle(.insetGrouped)
         }
     }
 
+    /// A message centred on the ground, which scrolls when it doesn't fit,
+    /// as at the largest text sizes.
+    private func centered<Message: View>(@ViewBuilder _ message: () -> Message) -> some View {
+        let message = message()
+        return ViewThatFits(in: .vertical) {
+            message
+            ScrollView {
+                message
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.ground)
+    }
+
+    /// Only a complete scene has a model to open, so only its row is a link.
+    @ViewBuilder
     private func row(_ scene: SplatScene) -> some View {
-        SceneRow(scene: scene, thumbnails: model.thumbnails)
-            .background {
-                // Only a complete scene has a model to open.
-                if scene.isComplete {
-                    NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
-                        EmptyView()
-                    }
-                    .opacity(0)
+        Group {
+            if scene.isComplete {
+                NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
+                    SceneRow(scene: scene, thumbnails: model.thumbnails)
+                }
+            } else {
+                SceneRow(scene: scene, thumbnails: model.thumbnails)
+            }
+        }
+        .swipeActions {
+            Button("Delete", role: .destructive) {
+                pendingDelete = scene
+            }
+        }
+        .contextMenu {
+            if scene.isComplete, let viewerURL = scene.viewerURL {
+                Link(destination: viewerURL) {
+                    Label("Open on splat-3d.com", systemImage: "safari")
                 }
             }
-            .listRowBackground(Palette.paper)
-            .listRowSeparatorTint(Palette.rule)
-            .swipeActions {
-                Button("Delete", role: .destructive) {
-                    pendingDelete = scene
-                }
+            Button(role: .destructive) {
+                pendingDelete = scene
+            } label: {
+                Label("Delete scene", systemImage: "trash")
             }
-            .contextMenu {
-                if scene.isComplete, let viewerURL = scene.viewerURL {
-                    Link(destination: viewerURL) {
-                        Label("Open on splat-3d.com", systemImage: "safari")
-                    }
-                }
-                Button(role: .destructive) {
-                    pendingDelete = scene
-                } label: {
-                    Label("Delete scene", systemImage: "trash")
-                }
-            }
+        }
     }
 }
 
-/// One scene: thumbnail, title, id and age, and its status.
+/// One scene: thumbnail, then its title, status, and ID, age and size.
 private struct SceneRow: View {
     let scene: SplatScene
     let thumbnails: ThumbnailStore
 
-    private static let thumbnailSize: CGFloat = 52
+    private static let thumbnailSize: CGFloat = 56
+    private static let thumbnailCorner: CGFloat = 12
     private static let idPrefix = 8
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
+        // At accessibility sizes the thumbnail goes above the text, which
+        // takes the row's width, whole: beside it, words broke mid-word.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             SceneThumbnail(scene: scene, store: thumbnails)
                 .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
-                .clipShape(Hairline.shape)
-                .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
+                .clipShape(RoundedRectangle(cornerRadius: Self.thumbnailCorner, style: .continuous))
 
-            // At accessibility sizes the text takes the row's width, whole,
-            // and the status goes under it: beside it, it broke mid-word.
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(scene.displayTitle)
-                    .typeStyle(.bodyStrong)
-                    .foregroundStyle(Palette.ink)
+                    .font(.headline)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                StatusLabel(state: scene.status.dot(percent: scene.processingPct), text: scene.status.shortName)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 Text(details)
-                    .typeStyle(.code)
-                    .foregroundStyle(Palette.graphite)
+                    .typeStyle(.smallData)
+                    .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                if dynamicTypeSize.isAccessibilitySize {
-                    status
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            if !dynamicTypeSize.isAccessibilitySize {
-                status
             }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityHint(scene.isComplete ? "Opens the scene in 3D" : "")
-    }
-
-    private var status: some View {
-        StatusLabel(state: scene.status.dot(percent: scene.processingPct), text: scene.status.shortName)
     }
 
     /// "a1b2c3d4 · 2 days ago · 1.9M splats".
@@ -200,7 +196,7 @@ private struct SceneRow: View {
 
 // MARK: - SceneThumbnail
 
-/// A scene's thumbnail, loaded with the API key. A faint mark shows while it
+/// A scene's thumbnail, loaded with the API key. A placeholder shows while it
 /// loads, and stays when the scene has none or the load fails.
 private struct SceneThumbnail: View {
     let scene: SplatScene
@@ -217,7 +213,7 @@ private struct SceneThumbnail: View {
     }
 
     var body: some View {
-        ThumbnailPlaceholder()
+        ThumbnailPlaceholder(style: .symbol)
             .overlay {
                 if let image {
                     Image(uiImage: image)
@@ -233,18 +229,38 @@ private struct SceneThumbnail: View {
     }
 }
 
-/// Mist ground with a faint mark, where a thumbnail will go.
+/// A plain fill with a faint emblem, where a thumbnail will go.
 struct ThumbnailPlaceholder: View {
+
+    enum Style {
+        /// Mark G·5, which reads only large: the complete screen's picture.
+        case mark
+        /// A neutral symbol, for a list row's small square.
+        case symbol
+    }
+
+    let style: Style
+
     private static let markOpacity = 0.35
     private static let markInset: CGFloat = 0.28
+    private static let symbolScale: CGFloat = 0.4
 
     var body: some View {
         GeometryReader { geometry in
-            Palette.mist
+            let side = min(geometry.size.width, geometry.size.height)
+            Palette.placeholder
                 .overlay {
-                    Mark()
-                        .padding(min(geometry.size.width, geometry.size.height) * Self.markInset)
-                        .opacity(Self.markOpacity)
+                    switch style {
+                    case .mark:
+                        Mark()
+                            .padding(side * Self.markInset)
+                            .opacity(Self.markOpacity)
+                    case .symbol:
+                        Image(systemName: "cube.transparent")
+                            .font(.system(size: side * Self.symbolScale, weight: .light))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
                 }
         }
     }

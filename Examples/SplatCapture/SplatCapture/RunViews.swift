@@ -9,14 +9,16 @@ import Splat3D
 /// Where to add credits: the billing page of the Splat3D dashboard.
 let billingURL = URL(string: "https://splat-3d.com/dashboard/settings/billing")!
 
-/// A screen: eyebrow (with the scene's ID once it has one), headline, lead,
-/// then its content, on paper.
+/// A screen on the grouped ground: a navigation title, a headline in
+/// Hanken, a lead, the scene's ID once it has one, then its content.
 struct Screen<Content: View>: View {
-    let eyebrow: String
-    /// A dot before the eyebrow, for a screen that is a status: Failed.
+    /// The navigation bar's title: where the run is, such as "Paused".
+    let title: String
+    var titleDisplay = NavigationBarItem.TitleDisplayMode.inline
+    /// A dot before the scene's ID, for a screen that is a status: Failed.
     var status: DotState?
     var sceneID: String?
-    let title: String
+    let headline: String
     let lead: String?
     @ViewBuilder let content: Content
 
@@ -24,70 +26,67 @@ struct Screen<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    // At accessibility sizes the ID goes under the label:
-                    // side by side, both broke mid-word.
-                    let eyebrowLayout = dynamicTypeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-                        : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 6))
-                    eyebrowLayout {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            if let status {
-                                StatusDot(state: status)
-                            }
-                            MonoLabel(sceneID == nil ? eyebrow : "\(eyebrow) · scene")
-                        }
-                        // IDs are case sensitive: not in the label's capitals.
-                        if let sceneID {
-                            Text(sceneID)
-                                .typeStyle(.code)
-                                .foregroundStyle(Palette.graphite)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    Text(title)
+                    Text(headline)
                         .typeStyle(.display)
-                        .foregroundStyle(Palette.ink)
                         .fixedSize(horizontal: false, vertical: true)
                     if let lead {
                         Text(lead)
-                            .typeStyle(.body)
-                            .foregroundStyle(Palette.graphite)
+                            .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let sceneID {
+                        sceneLine(sceneID)
                     }
                 }
                 content
             }
-            .padding(Hairline.margin)
+            .padding(.horizontal, Theme.margin)
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Palette.paper)
+        .background(Palette.ground)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(titleDisplay)
+    }
+
+    /// "Scene a1b2c3d4e5f6". At accessibility sizes the ID goes under the
+    /// word: side by side, both broke mid-word.
+    private func sceneLine(_ sceneID: String) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 6))
+        return layout {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if let status {
+                    StatusDot(state: status)
+                }
+                Text("Scene")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Text(sceneID)
+                .typeStyle(.smallData)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        }
+        .padding(.top, 2)
     }
 }
 
-/// A thin accent bar over a rule, for progress that is moving.
-struct HairlineProgress: View {
+/// The system's progress bar in the accent, for progress that is moving.
+struct RunProgressBar: View {
     /// What is moving, for VoiceOver: "Upload".
     let label: String
     /// 0...1.
     let fraction: Double
 
-    private static let height: CGFloat = 2
-
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Palette.rule
-                Palette.accent
-                    .frame(width: geometry.size.width * min(max(fraction, 0), 1))
-            }
-        }
-        .frame(height: Self.height)
-        .animation(.easeOut, value: fraction)
-        .accessibilityElement()
-        .accessibilityLabel(Text(label))
-        .accessibilityValue(Text(fraction.formatted(.percent.precision(.fractionLength(0)))))
+        ProgressView(value: min(max(fraction, 0), 1))
+            .tint(Palette.accent)
+            .animation(.easeOut, value: fraction)
+            .accessibilityLabel(Text(label))
     }
 }
 
@@ -100,27 +99,31 @@ struct RunningView: View {
 
     private static let percent: Double = 100
     private static let previewHeight: CGFloat = 200
+    private static let previewCorner: CGFloat = 14
 
     var body: some View {
-        Screen(eyebrow: "Running", sceneID: progress.sceneID, title: title, lead: lead) {
-            Panel {
-                StepRow(name: "Save capture", state: state(of: .saving), detail: progress.step > .saving ? "Done" : "")
-                Rule()
-                StepRow(name: "Upload", state: state(of: .uploading), detail: uploadDetail)
-                Rule()
-                StepRow(name: "Launch", state: state(of: .launching), detail: launchDetail)
-                Rule()
-                StepRow(name: "Process", note: processNote, state: state(of: .processing), detail: processDetail)
-                Rule()
-                StepRow(name: "Ready", state: .waiting, detail: "")
-            }
+        Screen(title: "Running", sceneID: progress.sceneID, headline: title, lead: lead) {
+            VStack(spacing: 12) {
+                Card {
+                    StepRow(name: "Save capture", state: state(of: .saving), detail: progress.step > .saving ? "Done" : "")
+                    CardDivider()
+                    StepRow(name: "Upload", state: state(of: .uploading), detail: uploadDetail)
+                    CardDivider()
+                    StepRow(name: "Launch", state: state(of: .launching), detail: launchDetail)
+                    CardDivider()
+                    StepRow(name: "Process", note: processNote, state: state(of: .processing), detail: processDetail)
+                    CardDivider()
+                    StepRow(name: "Ready", state: .waiting, detail: "")
+                }
 
-            if let fraction {
-                HairlineProgress(label: progress.step == .uploading ? "Upload" : "Processing", fraction: fraction)
+                if let fraction {
+                    RunProgressBar(label: progress.step == .uploading ? "Upload" : "Processing", fraction: fraction)
+                        .padding(.horizontal, Theme.rowInset)
+                }
             }
 
             if !isOnline {
-                NoticeBox(
+                NoticeCard(
                     tone: .neutral,
                     title: "You're offline",
                     detail: "A job that started keeps running on the server. SplatCapture catches up when you're back online."
@@ -128,14 +131,11 @@ struct RunningView: View {
             }
 
             if let thumbnail {
-                Panel {
-                    MonoLabel("Preview")
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                    Rule()
+                CardSection(header: "Preview") {
                     Image(uiImage: thumbnail)
                         .resizable()
                         .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: Self.previewCorner, style: .continuous))
                         .frame(maxWidth: .infinity, maxHeight: Self.previewHeight)
                         .padding(10)
                 }
@@ -256,12 +256,11 @@ private struct StepRow: View {
             StatusDot(state: state)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                    .typeStyle(.body)
-                    .foregroundStyle(state == .waiting ? Palette.graphite : Palette.ink)
+                    .foregroundStyle(state == .waiting ? .secondary : .primary)
                 if let note {
                     Text(note)
-                        .typeStyle(.footnote)
-                        .foregroundStyle(Palette.graphite)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 // At accessibility sizes there is no room beside the name:
                 // the detail goes under it, whole.
@@ -275,15 +274,16 @@ private struct StepRow: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .frame(minHeight: Theme.touchTarget)
+        .padding(.horizontal, Theme.rowInset)
+        .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
     }
 
     private var detailText: some View {
         Text(detail)
             .typeStyle(.data)
-            .foregroundStyle(Palette.graphite)
+            .foregroundStyle(.secondary)
     }
 }
 
@@ -312,48 +312,45 @@ struct PausedView: View {
     }
 
     var body: some View {
-        Screen(eyebrow: "Paused", sceneID: paused.sceneID, title: paused.title, lead: paused.detail) {
-            Panel {
+        Screen(title: "Paused", sceneID: paused.sceneID, headline: paused.title, lead: paused.detail) {
+            Card {
                 FactRow(label: "Stopped at") {
                     Text(stoppedAt)
-                        .typeStyle(.data)
-                        .foregroundStyle(Palette.ink)
                 }
-                Rule()
+                CardDivider()
                 FactRow(label: "Charges") {
                     Text(paused.charges)
-                        .typeStyle(.footnote)
-                        .foregroundStyle(Palette.ink)
                 }
-                Rule()
+                CardDivider()
                 FactRow(label: "Network") {
                     StatusLabel(state: isOnline ? .done : .failed, text: isOnline ? "Online" : "Offline")
                 }
             }
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 if needsCredits {
                     Link("Add credits", destination: billingURL)
-                        .buttonStyle(.primary)
+                        .actionStyle(.primary)
                 }
                 Button("Resume", action: onResume)
-                    .buttonStyle(HairlineButtonStyle(variant: needsCredits ? .ghost : .primary))
+                    .actionStyle(needsCredits ? .secondary : .primary)
                     .disabled(waitsForNetwork)
                 if waitsForNetwork {
                     Text("Resumes by itself when you're back online.")
-                        .typeStyle(.footnote)
-                        .foregroundStyle(Palette.graphite)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
                 }
                 // The plan's monthly limit: billing is where the plan changes.
                 if case .quotaExceeded = paused.cause {
                     Link("Open billing", destination: billingURL)
-                        .buttonStyle(.ghost)
+                        .actionStyle(.secondary)
                 }
-                Button("Discard capture") {
+                Button("Discard capture", role: .destructive) {
                     confirmingDiscard = true
                 }
-                .buttonStyle(.destructive)
+                .actionStyle(.destructive)
             }
             .confirmationDialog("Discard this capture?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
                 Button("Discard capture", role: .destructive, action: onDiscard)
@@ -394,50 +391,52 @@ struct FailedView: View {
     let onDiscard: () -> Void
 
     var body: some View {
-        Screen(eyebrow: "Failed", status: .failed, sceneID: failed.sceneID, title: failed.title, lead: failed.detail) {
+        Screen(title: "Failed", status: .failed, sceneID: failed.sceneID, headline: failed.title, lead: failed.detail) {
             if let charges = failed.charges {
-                Panel {
+                Card {
                     FactRow(label: "Charges") {
                         Text(charges)
-                            .typeStyle(.footnote)
-                            .foregroundStyle(Palette.ink)
                     }
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(spacing: 12) {
                 switch failed.retry {
                 case .uploadAgain:
                     Button("Upload again", action: onUploadAgain)
-                        .buttonStyle(.primary)
-                    Text("Sends the saved capture to a new scene and deletes this one. Nothing is charged until it launches.")
-                        .typeStyle(.footnote)
-                        .foregroundStyle(Palette.graphite)
+                        .actionStyle(.primary)
+                    note("Sends the saved capture to a new scene and deletes this one. Nothing is charged until it launches.")
                 case .processAgain:
                     Button("Process again", action: onProcessAgain)
-                        .buttonStyle(.primary)
-                    Text("Creates a new scene from the saved capture, and charges it.")
-                        .typeStyle(.footnote)
-                        .foregroundStyle(Palette.graphite)
+                        .actionStyle(.primary)
+                    note("Creates a new scene from the saved capture, and charges it.")
                 case .impossible:
                     EmptyView()
                 }
 
                 if failed.retry == .impossible {
                     Button("New capture", action: onDiscard)
-                        .buttonStyle(.primary)
+                        .actionStyle(.primary)
                     // Say so, as Upload again does: the scene goes too.
                     if failed.leftoverScene == .delete {
-                        Text("Also deletes this scene, which was never launched or charged.")
-                            .typeStyle(.footnote)
-                            .foregroundStyle(Palette.graphite)
+                        note("Also deletes this scene, which was never launched or charged.")
                     }
                 } else {
-                    Button("Discard capture", action: onDiscard)
-                        .buttonStyle(.destructive)
+                    Button("Discard capture", role: .destructive, action: onDiscard)
+                        .actionStyle(.destructive)
                 }
             }
         }
+    }
+
+    /// What the button above does, under it.
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -456,50 +455,47 @@ struct CompleteView: View {
     private static let thumbnailAspect: CGFloat = 4 / 3
 
     var body: some View {
-        Screen(eyebrow: "Ready", sceneID: scene.id, title: "Your scene is ready", lead: scene.displayTitle) {
+        Screen(title: "Ready", sceneID: scene.id, headline: "Your scene is ready", lead: scene.displayTitle) {
             preview
 
-            Panel {
+            Card {
                 FactRow(label: "Splats") {
                     Text(scene.numGaussians.map { $0.formatted(.number.notation(.compactName)) } ?? "—")
                         .typeStyle(.data)
-                        .foregroundStyle(Palette.ink)
                 }
-                Rule()
+                CardDivider()
                 FactRow(label: "Status") {
                     StatusLabel(state: .done, text: scene.status.displayName)
                 }
-                Rule()
+                CardDivider()
                 FactRow(label: "Created") {
                     Text(scene.createdAt.formatted(date: .abbreviated, time: .shortened))
-                        .typeStyle(.data)
-                        .foregroundStyle(Palette.ink)
                 }
             }
 
             // Above the buttons, so a failed delete shows where you tapped.
             if let deleteError {
-                NoticeBox(tone: .alarm, title: "Couldn't delete", detail: deleteError)
+                NoticeCard(tone: .alarm, title: "Couldn't delete", detail: deleteError)
             }
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
                     Text("View in 3D")
                 }
-                .buttonStyle(.primary)
+                .actionStyle(.primary)
 
                 if let viewerURL = scene.viewerURL {
                     Link("Open on splat-3d.com", destination: viewerURL)
-                        .buttonStyle(.ghost)
+                        .actionStyle(.secondary)
                 }
 
                 Button("New capture", action: onNewCapture)
-                    .buttonStyle(.ghost)
+                    .actionStyle(.secondary)
 
-                Button(isDeleting ? "Deleting…" : "Delete scene") {
+                Button(isDeleting ? "Deleting…" : "Delete scene", role: .destructive) {
                     confirmingDelete = true
                 }
-                .buttonStyle(.destructive)
+                .actionStyle(.destructive)
                 .disabled(isDeleting)
             }
             .confirmationDialog("Delete this scene?", isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -511,7 +507,7 @@ struct CompleteView: View {
     }
 
     private var preview: some View {
-        ThumbnailPlaceholder()
+        ThumbnailPlaceholder(style: .mark)
             .overlay {
                 if let thumbnail {
                     Image(uiImage: thumbnail)
@@ -520,7 +516,6 @@ struct CompleteView: View {
                 }
             }
             .aspectRatio(Self.thumbnailAspect, contentMode: .fit)
-            .clipShape(Hairline.shape)
-            .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
+            .clipShape(Theme.cardShape)
     }
 }

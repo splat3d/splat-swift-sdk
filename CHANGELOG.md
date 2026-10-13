@@ -180,8 +180,8 @@ All notable changes to Splat3D. Versions follow [Semantic Versioning](https://se
 - The example views scenes in 3D with [SplatKit](https://github.com/Xget7/splatkit-ios)
   (MIT): a Recent Scenes list, **View in 3D** after a capture, and a preset
   picker. It needs iOS 17, SplatKit's minimum; the SDK still supports iOS 16.
-- SplatCapture is a reference app: Splat3D's design in light and dark, the
-  whole lifecycle (capture, upload, progress, thumbnail, view, delete), and a
+- SplatCapture is a reference app: Liquid Glass on iOS 26 (bordered capsules
+  and materials before it) in light and dark, the whole lifecycle (capture, upload, progress, thumbnail, view, delete), and a
   screen for every way a run stops. An interrupted run resumes with
   `resume(_:)`, and after the app is killed with `resume(sceneID:…)` from a
   capture it keeps on disk, without paying twice.

@@ -34,7 +34,7 @@ struct PreviewHarness: View {
         "failed-processing", "failed-upload-lost", "failed-cancelled", "failed-unusable",
         "complete", "complete-delete-error",
         "scenes", "scenes-empty", "scenes-error",
-        "viewer-downloading", "viewer-undrawable", "viewer-no-spz",
+        "viewer-downloading", "viewer-undrawable", "viewer-no-spz", "viewer-orbit", "viewer-look",
     ]
 
     let state: String
@@ -66,7 +66,8 @@ struct PreviewHarness: View {
                 SceneViewerScreen(
                     title: Self.scene.displayTitle,
                     webURL: Self.scene.viewerURL,
-                    previewing: SceneViewerModel(previewing: Self.viewerPhase(state))
+                    previewing: Self.viewerModel(state),
+                    mode: state == "viewer-look" ? .look : .orbit
                 )
             }
         default:
@@ -198,14 +199,19 @@ struct PreviewHarness: View {
         }
     }
 
-    private static func viewerPhase(_ state: String) -> SceneViewerModel.Phase {
+    private static func viewerModel(_ state: String) -> SceneViewerModel {
         switch state {
         case "viewer-downloading":
-            return .downloading(received: 12 * megabyte, expected: 41 * megabyte)
+            return SceneViewerModel(previewing: .downloading(received: 12 * megabyte, expected: 41 * megabyte))
         case "viewer-no-spz":
-            return .failed(ViewerFailure(SplatError.notFound(refusal(404, "not_found", "No SPZ file available for this scene."))))
+            return SceneViewerModel(previewing: .failed(ViewerFailure(SplatError.notFound(refusal(404, "not_found", "No SPZ file available for this scene.")))))
+        case "viewer-orbit", "viewer-look":
+            // The controls, over a world with no file: the Simulator can't
+            // draw one anyway.
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("preview.spz")
+            return SceneViewerModel(previewing: .showing(file: file, bytes: 41 * megabyte), worldReady: true)
         default:
-            return .undrawable(bytes: 41 * megabyte)
+            return SceneViewerModel(previewing: .undrawable(bytes: 41 * megabyte))
         }
     }
 }

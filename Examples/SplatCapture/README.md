@@ -200,18 +200,28 @@ Key sections are marked with `// MARK: - Splat3D Integration` comments:
 | `RunViews.swift` | Progress, paused, failed and complete screens |
 | `RecentScenesView.swift` | Scenes: list, thumbnails, delete |
 | `SceneViewer.swift`, `SplatWorldView.swift` | The 3D viewer |
-| `Hairline.swift` | Splat3D's look: colors, type, ruled boxes, the mark |
+| `Theme.swift` | Splat3D's look: colors, type, cards, glass buttons and surfaces, the mark |
 | `PreviewHarness.swift` | Debug only: every state, with made-up data |
 
 ## Design
 
-The app follows Splat3D's relaunch design, as splat-3d.com does: paper and
-ink with one blue accent, ruled boxes with 3 pt corners, no shadows, no
-pills, and a status shown as a dot with text. The accent marks only what you
-can act on or what is moving. It follows the system's light or dark
-appearance. Text is set in Hanken Grotesk, and ids, numbers and code in
-Martian Mono at 87.5% width; both are bundled in `Fonts/`. The app icon is
-mark G·5 on ink, drawn in the app by `Mark` in `Hairline.swift`.
+On iOS 26 the app uses Liquid Glass where Apple puts it: on the controls
+that float over content. Buttons are glass capsules (the primary one filled
+with Splat3D's blue accent, Rinse; destructive ones in red), and the
+overlays on the camera and the 3D viewer are glass that blends where
+neighbours meet. Content sits in rounded cards on the grouped background, as
+in Settings, and a status is a colored dot with text. The navigation bar,
+the segmented preset control, the Scenes list and the confirmation dialogs
+are the system's own. On iOS 17 to 25 the same screens use bordered capsule
+buttons and material overlays. The app follows the system's light or dark
+appearance and Dynamic Type.
+
+Headlines are set in Hanken Grotesk, and scene IDs, numbers and sizes in
+Martian Mono at 87.5% width; both are bundled in `Fonts/`. Everything else is
+the system font. `Theme.swift` holds the switch between glass and the
+fallback, so the views never check the OS version. The app icon is mark G·5
+on ink, drawn in the app by `Mark` in `Theme.swift`, which also fills the
+complete screen's picture until the thumbnail arrives.
 
 ## Release builds
 
