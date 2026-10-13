@@ -170,7 +170,8 @@ struct ARCameraView: UIViewRepresentable {
 /// Screens pushed on the main navigation stack.
 enum Route: Hashable {
     case recentScenes
-    case viewer(sceneID: String, title: String)
+    /// `webURL` is the scene on splat-3d.com, for when the app can't show it.
+    case viewer(sceneID: String, title: String, webURL: URL?)
 }
 
 // MARK: - ContentView
@@ -217,8 +218,8 @@ struct CaptureRoot: View {
                             switch route {
                             case .recentScenes:
                                 RecentScenesView()
-                            case .viewer(let sceneID, let title):
-                                SceneViewerScreen(sceneID: sceneID, title: title)
+                            case .viewer(let sceneID, let title, let webURL):
+                                SceneViewerScreen(sceneID: sceneID, title: title, webURL: webURL)
                             }
                         }
                 }
@@ -228,6 +229,11 @@ struct CaptureRoot: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 model.appBecameActive()
+            }
+        }
+        .onChange(of: connectivity.isOnline) { _, online in
+            if online {
+                model.networkReturned()
             }
         }
     }
@@ -410,6 +416,10 @@ struct ScanningView: View {
     @ObservedObject var model: CaptureModel
     let preset: ScenePreset
 
+    /// Set by Stop and upload or Cancel, so the other can't run after it.
+    @State private var isStopping = false
+    @State private var confirmingCancel = false
+
     /// The overlays sit on the camera image: mostly opaque, never glass.
     private static let overlayOpacity = 0.85
 
@@ -460,9 +470,27 @@ struct ScanningView: View {
                 }
 
                 Button("Stop and upload") {
+                    isStopping = true
                     Task { await model.stopAndUpload(preset: preset) }
                 }
                 .buttonStyle(.primary)
+                .disabled(isStopping)
+
+                // A scan you don't want ends here, not as a scene.
+                Button("Cancel") {
+                    confirmingCancel = true
+                }
+                .buttonStyle(.ghost)
+                .background(Palette.paper.opacity(Self.overlayOpacity), in: Hairline.shape)
+                .disabled(isStopping)
+                .confirmationDialog("Discard this scan?", isPresented: $confirmingCancel, titleVisibility: .visible) {
+                    Button("Discard scan", role: .destructive) {
+                        isStopping = true
+                        Task { await model.cancelScan() }
+                    }
+                } message: {
+                    Text("The video and poses are deleted. Nothing is uploaded or charged.")
+                }
 
                 overlay {
                     MonoLabel("Preset \(preset.rawValue)")

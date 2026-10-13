@@ -115,7 +115,7 @@ struct RecentScenesView: View {
             .background {
                 // Only a complete scene has a model to open.
                 if scene.isComplete {
-                    NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle)) {
+                    NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
                         EmptyView()
                     }
                     .opacity(0)

@@ -29,7 +29,7 @@ struct PreviewHarness: View {
         "saving", "uploading", "launching", "processing", "processing-unknown", "processing-offline",
         "processing-accessibility",
         "paused-connection", "paused-background", "paused-app-closed", "paused-not-created",
-        "paused-credits", "paused-queue", "paused-timeout",
+        "paused-credits", "paused-queue", "paused-quota", "paused-timeout",
         "failed-processing", "failed-upload-lost", "failed-cancelled", "failed-unusable",
         "complete", "complete-delete-error",
         "scenes", "scenes-empty", "scenes-error",
@@ -59,7 +59,11 @@ struct PreviewHarness: View {
             .tint(Palette.accent)
         case let state where state.hasPrefix("viewer"):
             NavigationStack {
-                SceneViewerScreen(title: Self.scene.displayTitle, previewing: SceneViewerModel(previewing: Self.viewerPhase(state)))
+                SceneViewerScreen(
+                    title: Self.scene.displayTitle,
+                    webURL: Self.scene.viewerURL,
+                    previewing: SceneViewerModel(previewing: Self.viewerPhase(state))
+                )
             }
         default:
             CaptureRoot(model: Self.model(state), connectivity: Connectivity(previewOnline: !state.hasSuffix("offline") && state != "paused-connection"))
@@ -146,6 +150,9 @@ struct PreviewHarness: View {
         case "paused-queue":
             let queue = refusal(429, "queue_full", "You have 1 scene processing, and your plan allows 1 at once. Try again when one finishes.")
             return .preview(outcome(interruption(.launch, SplatError.rateLimited(queue))))
+        case "paused-quota":
+            let quota = refusal(429, "quota_exceeded", "Monthly scene processing limit reached.")
+            return .preview(outcome(interruption(.launch, SplatError.rateLimited(quota))))
         case "paused-timeout":
             return .preview(outcome(interruption(.wait, SplatError.timeout)))
         case "failed-processing":

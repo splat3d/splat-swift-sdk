@@ -15,6 +15,8 @@ import SplatKit
 struct SceneViewerScreen: View {
 
     let title: String
+    /// The scene on splat-3d.com, offered when asking again can't help.
+    let webURL: URL?
 
     @StateObject private var model: SceneViewerModel
     @Environment(\.scenePhase) private var scenePhase
@@ -29,14 +31,16 @@ struct SceneViewerScreen: View {
     private static let walkingSpeed: Float = 0.6
     private static let actionWidth: CGFloat = 220
 
-    init(sceneID: String, title: String) {
+    init(sceneID: String, title: String, webURL: URL?) {
         self.title = title
+        self.webURL = webURL
         _model = StateObject(wrappedValue: SceneViewerModel(sceneID: sceneID))
     }
 
     #if DEBUG
-    init(title: String, previewing model: SceneViewerModel) {
+    init(title: String, webURL: URL?, previewing model: SceneViewerModel) {
         self.title = title
+        self.webURL = webURL
         _model = StateObject(wrappedValue: model)
     }
     #endif
@@ -82,12 +86,24 @@ struct SceneViewerScreen: View {
         case .failed(let failure):
             VStack(spacing: 16) {
                 Notice(symbol: "exclamationmark.triangle", title: failure.title, detail: failure.detail)
-                Button("Try again") {
-                    Task { await model.retry() }
-                }
-                .buttonStyle(.primary)
-                .frame(maxWidth: Self.actionWidth)
+                failureAction(failure)
+                    .frame(maxWidth: Self.actionWidth)
             }
+        }
+    }
+
+    /// Try again when it can go differently. When the server would answer
+    /// the same, the scene on splat-3d.com, whose viewer needs no SPZ.
+    @ViewBuilder
+    private func failureAction(_ failure: ViewerFailure) -> some View {
+        if failure.canRetry {
+            Button("Try again") {
+                Task { await model.retry() }
+            }
+            .buttonStyle(.primary)
+        } else if let webURL {
+            Link("Open on splat-3d.com", destination: webURL)
+                .buttonStyle(.primary)
         }
     }
 
@@ -398,8 +414,22 @@ final class TransferWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendab
 
 /// Why a scene can't be shown, worded for whoever is testing.
 struct ViewerFailure {
+
+    /// What asking again would bring.
+    enum Retry {
+        /// Maybe something else: offer Try again.
+        case mayHelp
+        /// The same answer: offer the web viewer instead.
+        case sameAnswer
+    }
+
     let title: String
     let detail: String
+    let retry: Retry
+
+    var canRetry: Bool {
+        retry == .mayHelp
+    }
 
     /// RFC 9110 §15.5.1.
     private static let badRequest = 400
@@ -410,7 +440,8 @@ struct ViewerFailure {
     static func otherFormat(_ served: String) -> ViewerFailure {
         ViewerFailure(
             title: "This scene has no SPZ",
-            detail: "The server sent \(served.isEmpty ? "another format" : served.uppercased()) instead, which SplatKit can't read."
+            detail: "The server sent \(served.isEmpty ? "another format" : served.uppercased()) instead, which SplatKit can't read.",
+            retry: .sameAnswer
         )
     }
 
@@ -419,9 +450,10 @@ struct ViewerFailure {
         ViewerFailure(title: "SplatKit couldn't load this scene", detail: message)
     }
 
-    init(title: String, detail: String) {
+    init(title: String, detail: String, retry: Retry = .mayHelp) {
         self.title = title
         self.detail = detail
+        self.retry = retry
     }
 
     init(_ error: Error) {
@@ -429,12 +461,14 @@ struct ViewerFailure {
         case SplatError.requestFailed(let apiError) where Self.rejectsFormat(apiError):
             self.init(
                 title: "SPZ download not available on this server yet",
-                detail: "The API doesn't accept format=spz yet. It said: \(apiError.message)"
+                detail: "The API doesn't accept format=spz yet. It said: \(apiError.message)",
+                retry: .sameAnswer
             )
         case SplatError.notFound(let apiError):
             self.init(
                 title: "This scene has no SPZ",
-                detail: "\(apiError.message) Scenes processed before SPZ export, or whose SPZ conversion failed, have none."
+                detail: "\(apiError.message) Scenes processed before SPZ export, or whose SPZ conversion failed, have none.",
+                retry: .sameAnswer
             )
         case SplatError.unauthorized:
             self.init(title: "API key rejected", detail: "Check SPLAT_API_KEY in Secrets.xcconfig.")

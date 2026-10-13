@@ -18,7 +18,8 @@ import Splat3D
 // it stops before the outcome is known it throws .interrupted, and Resume
 // hands that to client.resume(_:), which never pays twice. The capture and
 // scene ID are on disk (CaptureStore), so after the app is killed the run
-// comes back paused, and Resume calls client.resume(sceneID:preset:…).
+// comes back paused, and Resume calls client.resume(sceneID:preset:…). A run
+// that had failed comes back failed.
 //
 // Leaving the app asks iOS for background time. When it runs out the run is
 // cancelled, which the SDK reports as an interruption, and it resumes by
@@ -89,10 +90,11 @@ struct PausedRun {
     let interruption: SplatError.Interruption?
 }
 
-/// A run that ended for good.
-struct FailedRun {
+/// A run that ended for good. Codable: CaptureStore keeps it, so a relaunch
+/// comes back to this screen, not to Resume.
+struct FailedRun: Codable, Equatable {
 
-    enum Retry {
+    enum Retry: String, Codable {
         /// Nothing to retry with: scan again.
         case impossible
         /// The video never landed, so the scene was never launched: upload the
@@ -102,12 +104,22 @@ struct FailedRun {
         case processAgain
     }
 
+    /// What becomes of the scene when the capture is dropped.
+    enum LeftoverScene: String, Codable {
+        /// It stays in Scenes.
+        case keep
+        /// The API refused it before launching or charging anything, so it
+        /// would sit in Scenes as Uploading: delete it, as Upload again does.
+        case delete
+    }
+
     let title: String
     let detail: String
     /// What was charged, when that is known.
     let charges: String?
     let sceneID: String?
     let retry: Retry
+    var leftoverScene = LeftoverScene.keep
 }
 
 /// A dismissible message on the start screen.
@@ -200,9 +212,13 @@ final class CaptureModel: ObservableObject {
         let store = CaptureStore.live
         let run = store.loadRun()
 
-        // A capture on disk means the app was killed mid-run: offer Resume.
-        let state: CaptureState = store.loadRun().map {
-            .paused(PausedRun(sceneID: $0.sceneID, phase: nil, cause: .appClosed, interruption: nil))
+        // A capture on disk means the app was killed mid-run: offer Resume,
+        // unless the run had already failed, which shows again as it was.
+        let state: CaptureState = run.map { run -> CaptureState in
+            guard let failure = run.failure else {
+                return .paused(PausedRun(sceneID: run.sceneID, phase: nil, cause: .appClosed, interruption: nil))
+            }
+            return .failed(failure)
         } ?? .idle
 
         self.init(
@@ -253,6 +269,15 @@ final class CaptureModel: ObservableObject {
         #endif
         cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
         guard case .paused(let paused) = state, paused.cause == .backgrounded else {
+            return
+        }
+        resume()
+    }
+
+    /// The device is online again: a run the network stopped picks up, as
+    /// the paused screen promises.
+    func networkReturned() {
+        guard case .paused(let paused) = state, paused.cause == .connection else {
             return
         }
         resume()
@@ -328,6 +353,16 @@ final class CaptureModel: ObservableObject {
         uploadSavedCapture()
     }
 
+    /// Stop recording and throw the scan away: nothing is saved or sent.
+    func cancelScan() async {
+        stopScanTimers()
+        // SplatScanner has no cancel: stop() finishes the video, then it goes.
+        if let capture = try? await scanner.stop() {
+            try? FileManager.default.removeItem(at: capture.videoURL)
+        }
+        reset()
+    }
+
     // MARK: - Running
 
     /// Create a scene for the saved capture and see it through.
@@ -338,7 +373,9 @@ final class CaptureModel: ObservableObject {
         }
         sceneID = nil
         runPreset = run.preset
+        // A new run: no scene yet, and no failure to come back to.
         try? store.saveSceneID(nil)
+        try? store.saveFailure(nil)
         let video = store.videoURL
 
         perform(from: RunProgress(step: .uploading)) { [weak self] client in
@@ -411,10 +448,8 @@ final class CaptureModel: ObservableObject {
     /// The video never reached the scene: delete it, and upload the saved
     /// capture to a new one. Nothing was charged for the old scene.
     func uploadAgain() {
-        if case .failed(let failed) = state, let oldScene = failed.sceneID, let client {
-            Task {
-                try? await client.deleteScene(id: oldScene)
-            }
+        if case .failed(let failed) = state, let oldScene = failed.sceneID {
+            deleteUnlaunched(oldScene)
         }
         uploadSavedCapture()
     }
@@ -424,13 +459,28 @@ final class CaptureModel: ObservableObject {
         uploadSavedCapture()
     }
 
-    /// Forget the capture. A scene already created stays in Scenes.
+    /// Forget the capture. A scene already created stays in Scenes, unless
+    /// the API refused it before launching it.
     func discard() {
+        if case .failed(let failed) = state, failed.leftoverScene == .delete, let scene = failed.sceneID {
+            deleteUnlaunched(scene)
+        }
         runGeneration += 1
         runTask?.cancel()
         endBackgroundTime()
         store.clear()
         reset()
+    }
+
+    /// Delete a scene the API never launched, so nothing was charged for it.
+    /// Best effort: if it fails, the scene stays in Scenes as Uploading.
+    private func deleteUnlaunched(_ sceneID: String) {
+        guard let client else {
+            return
+        }
+        Task {
+            try? await client.deleteScene(id: sceneID)
+        }
     }
 
     /// Back to the start screen.
@@ -569,6 +619,9 @@ final class CaptureModel: ObservableObject {
 
     private func fail(_ failed: FailedRun) {
         state = .failed(failed)
+        // Kept with the capture, which Upload again and Process again still
+        // need: a relaunch shows this screen, not "A capture is waiting".
+        try? store.saveFailure(failed)
         UINotificationFeedbackGenerator().notificationOccurred(.error)
     }
 
@@ -808,7 +861,8 @@ enum RunOutcome {
                     detail: refusal.message,
                     charges: "Nothing was charged.",
                     sceneID: interruption.sceneID,
-                    retry: .impossible
+                    retry: .impossible,
+                    leftoverScene: .delete
                 ))
             case Code.conflict:
                 return .failed(FailedRun(

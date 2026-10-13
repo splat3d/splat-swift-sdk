@@ -320,6 +320,20 @@ struct PausedView: View {
 
     @State private var confirmingDiscard = false
 
+    /// A connection pause can't resume offline. CaptureRoot resumes it when
+    /// the network is back.
+    private var waitsForNetwork: Bool {
+        paused.cause == .connection && !isOnline
+    }
+
+    /// Credits are what's missing, so adding them is the one action.
+    private var needsCredits: Bool {
+        if case .insufficientCredits = paused.cause {
+            return true
+        }
+        return false
+    }
+
     var body: some View {
         Screen(eyebrow: "Paused", sceneID: paused.sceneID, title: paused.title, lead: paused.detail) {
             Panel {
@@ -341,10 +355,22 @@ struct PausedView: View {
             }
 
             VStack(spacing: 10) {
-                Button("Resume", action: onResume)
-                    .buttonStyle(.primary)
-                if case .insufficientCredits = paused.cause {
+                if needsCredits {
                     Link("Add credits", destination: billingURL)
+                        .buttonStyle(.primary)
+                }
+                Button("Resume", action: onResume)
+                    .buttonStyle(HairlineButtonStyle(variant: needsCredits ? .ghost : .primary))
+                    .disabled(waitsForNetwork)
+                if waitsForNetwork {
+                    Text("Resumes by itself when you're back online.")
+                        .typeStyle(.footnote)
+                        .foregroundStyle(Palette.graphite)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                // The plan's monthly limit: billing is where the plan changes.
+                if case .quotaExceeded = paused.cause {
+                    Link("Open billing", destination: billingURL)
                         .buttonStyle(.ghost)
                 }
                 Button("Discard capture") {
@@ -494,8 +520,13 @@ struct CompleteView: View {
                 }
             }
 
+            // Above the buttons, so a failed delete shows where you tapped.
+            if let deleteError {
+                NoticeBox(tone: .alarm, title: "Couldn't delete", detail: deleteError)
+            }
+
             VStack(spacing: 10) {
-                NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle)) {
+                NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
                     Text("View in 3D")
                 }
                 .buttonStyle(.primary)
@@ -518,10 +549,6 @@ struct CompleteView: View {
                 Button("Delete scene", role: .destructive, action: onDelete)
             } message: {
                 Text("Its model, video and thumbnail are deleted for good.")
-            }
-
-            if let deleteError {
-                NoticeBox(tone: .alarm, title: "Couldn't delete", detail: deleteError)
             }
 
             APICallBlock(code: """

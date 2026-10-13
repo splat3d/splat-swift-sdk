@@ -12,7 +12,8 @@ import Splat3D
 //   Application Support/Capture/
 //     capture.mp4   the video SplatScanner recorded (needed to upload again)
 //     launch.json   ARKit poses and LiDAR points, what the launch resends
-//     run.json      preset, title, and the scene ID once it exists
+//     run.json      preset, title, the scene ID once it exists, and how
+//                   the run failed if it did
 //
 // JSONEncoder writes every Float and Double so it reads back to the same
 // value, so the rebuilt launch body matches the original byte for byte.
@@ -27,6 +28,8 @@ struct CaptureStore {
         let preset: ScenePreset
         let title: String
         let createdAt: Date
+        /// Set when the run ended for good: a relaunch shows it again.
+        var failure: FailedRun?
     }
 
     /// What resume must resend exactly.
@@ -74,10 +77,20 @@ struct CaptureStore {
 
     /// Record the scene ID, the moment the API has created the scene.
     func saveSceneID(_ sceneID: String?) throws {
+        try update { $0.sceneID = sceneID }
+    }
+
+    /// Record how the run failed, or `nil` when a new run starts.
+    func saveFailure(_ failure: FailedRun?) throws {
+        try update { $0.failure = failure }
+    }
+
+    /// Change the kept run, if there is one.
+    private func update(_ change: (inout Run) -> Void) throws {
         guard var run = loadRun() else {
             return
         }
-        run.sceneID = sceneID
+        change(&run)
         try write(run)
     }
 

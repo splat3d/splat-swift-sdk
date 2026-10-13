@@ -64,7 +64,8 @@ the scene and says it can't draw it.
 3. Slowly walk around the scene you want to capture (15–60 seconds is ideal)
 4. Watch the **pose** and **frame** counters in the top-right, and the
    **tracking** status above the stop button
-5. Tap **Stop and upload** when done
+5. Tap **Stop and upload** when done, or **Cancel** to delete the scan
+   without uploading it
 6. The app saves the capture, uploads the video and ARKit poses, launches
    processing and follows it step by step: upload (with bytes sent), launch,
    process (the API's stage and percent), and the scene's thumbnail as soon as
@@ -86,20 +87,24 @@ raw error:
 
 | What happened | What the app shows | Next |
 |---|---|---|
-| Network lost mid-upload or mid-launch | **Connection lost**, what was charged (nothing, or at most once) | **Resume**: `client.resume(interruption)` |
+| Network lost mid-upload or mid-launch | **Connection lost**, what was charged (nothing, or at most once). Resume is off while offline | Resumes by itself when the network is back, or **Resume**: `client.resume(interruption)` |
 | App left mid-run | It asks iOS for background time; when that runs out, the run pauses | Resumes by itself when the app is back |
 | App killed mid-run | On the next launch, **A capture is waiting** | **Resume**: `client.resume(sceneID:preset:arkitPoses:lidarPoints:)` with the saved capture |
 | App killed mid-upload | Resume gets `source_missing`: **The upload didn't finish**, nothing charged | **Upload again**: a new scene from the saved capture; the old one is deleted |
 | Not enough credits | **Not enough credits**, with the API's message | **Add credits** (dashboard), then **Resume** |
-| Too many scenes processing, monthly limit | The API's message | **Resume** later |
+| Too many scenes processing | The API's message | **Resume** later |
+| Monthly limit reached | The API's message | **Open billing** to change the plan, or **Resume** next month |
 | Job failed or cancelled on the server | **Processing failed** (refunded) or **Scene cancelled** | **Process again** (a new, charged scene) or discard |
+| The API can't use the upload (`source_unusable`) | **The server can't use this capture**, nothing charged | **New capture**, which also deletes the scene |
 | Unknown status | The step reads **Working**, with the raw status beside it | Keeps waiting |
 | No LiDAR, camera off, no key | Said on the start screen, with **Open Settings** for the camera | Scenes still work |
 
 So that a killed app can resume, `CaptureStore.swift` keeps the capture in
 Application Support (out of iCloud backups) from before the scene is created
 until it completes or you discard it: the video, the poses and LiDAR points
-the launch resends, the preset, and the scene ID from `onSceneCreated`.
+the launch resends, the preset, and the scene ID from `onSceneCreated`. A run
+that failed comes back on its failed screen after a relaunch, with the same
+next step.
 
 ### Previewing states
 
@@ -135,6 +140,9 @@ What can go wrong, and what the app says:
   Scenes processed before SPZ export, or whose SPZ conversion failed, have none.
 - **SPZ download not available on this server yet**: the API rejects
   `format=spz` (a 400 naming `format`) until it serves SPZ downloads.
+
+Asking again would bring the same answer for these two, so instead of **Try
+again** the screen offers **Open on splat-3d.com**, whose viewer needs no SPZ.
 - **SplatKit couldn't load this scene**: SplatKit refused the file. Its
   message follows. "SPZ payload exceeds the decoded size ceiling" means the
   scene is too big for SplatKit: it accepts at most 768 MiB unpacked, and
