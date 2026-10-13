@@ -309,3 +309,184 @@ extension SplatClientTests {
         XCTAssertEqual(again.thumbnailURL?.absoluteString, "https://api-staging.example.com/v1/scenes/staged/thumbnail")
     }
 }
+
+// MARK: - Scene details (API 1.5.0)
+//
+// preset, psnr, training_time_seconds, the processing stamps and the model
+// sizes, from gaussian-splatting PR #450 (toPublicScene in
+// api/src/lib/scenes.ts). Older APIs leave the keys out, and the API sends
+// null where a scene has no value, so both must read nil.
+
+extension SplatClientTests {
+
+    /// The preset names API 1.5.0 can send: PRESET_NAMES in
+    /// packages/core/src/params.ts, the enum of sceneSchema's `preset`.
+    static let apiPresets = ["fast", "standard", "quality", "ultra", "custom"]
+
+    /// Decode `body` as the answer to GET /v1/scenes/{id}.
+    func scene(from body: String) async throws -> SplatScene {
+        MockURLProtocol.stub(Fixture.scenePath, .json(200, body))
+        return try await makeClient().getScene(id: Fixture.sceneID)
+    }
+
+    func testCompleteSceneCarriesItsDetails() async throws {
+        let scene = try await scene(from: Fixture.completeSceneWithDetails)
+        let expectedStart = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-28T12:01:00Z"))
+        let startedAt = try XCTUnwrap(scene.processingStartedAt)
+        let completedAt = try XCTUnwrap(scene.processingCompletedAt)
+
+        XCTAssertEqual(scene.preset, .standard)
+        XCTAssertEqual(scene.psnr, 26.1)
+        XCTAssertEqual(scene.trainingTime, 233.7)
+        XCTAssertEqual(startedAt.timeIntervalSince(expectedStart), 0, accuracy: 0.001)
+        // 12:01:00 to 12:10:46.
+        XCTAssertEqual(completedAt.timeIntervalSince(startedAt), 586, accuracy: 0.001)
+        XCTAssertEqual(scene.modelSizes, SplatScene.ModelSizes(spz: 21_000_000, sog: 48_000_000, ply: 460_000_000))
+        XCTAssertEqual(scene.format, .spz)
+    }
+
+    func testOlderAPIsLeaveTheDetailsNil() async throws {
+        // API 1.3.0's answer, without any of the keys.
+        let scene = try await scene(from: Fixture.completeScene)
+
+        XCTAssertTrue(scene.isComplete)
+        XCTAssertNil(scene.preset)
+        XCTAssertNil(scene.psnr)
+        XCTAssertNil(scene.trainingTime)
+        XCTAssertNil(scene.processingStartedAt)
+        XCTAssertNil(scene.processingCompletedAt)
+        XCTAssertEqual(scene.modelSizes, SplatScene.ModelSizes())
+    }
+
+    func testNullDetailsReadNil() async throws {
+        let scene = try await scene(from: Fixture.completeSceneWithNullDetails)
+
+        XCTAssertTrue(scene.isComplete)
+        XCTAssertNil(scene.preset)
+        XCTAssertNil(scene.psnr)
+        XCTAssertNil(scene.trainingTime)
+        XCTAssertNil(scene.processingStartedAt)
+        XCTAssertNil(scene.processingCompletedAt)
+        XCTAssertNil(scene.modelSizes.spz)
+        XCTAssertNil(scene.modelSizes.sog)
+        XCTAssertNil(scene.modelSizes.ply)
+    }
+
+    func testUnknownPresetDecodesInsteadOfThrowing() async throws {
+        let scene = try await scene(from: Fixture.completeScene(preset: "cinematic"))
+
+        XCTAssertEqual(scene.preset, SplatScene.Preset(rawValue: "cinematic"))
+        XCTAssertEqual(scene.preset?.description, "cinematic")
+        XCTAssertEqual(scene.trainingTime, 233.7)
+    }
+
+    func testEveryAPIPresetHasAName() async throws {
+        for raw in Self.apiPresets {
+            let scene = try await scene(from: Fixture.completeScene(preset: raw))
+
+            XCTAssertEqual(scene.preset?.rawValue, raw)
+        }
+        XCTAssertEqual(SplatScene.Preset.allCases.map(\.rawValue), Self.apiPresets)
+    }
+
+    func testCustomHasNoScenePreset() {
+        // Retrain refuses custom, so ScenePreset, which retrain takes, lacks it.
+        XCTAssertNil(ScenePreset(rawValue: SplatScene.Preset.custom.rawValue))
+        XCTAssertEqual(ScenePreset(rawValue: SplatScene.Preset.quality.rawValue), .quality)
+    }
+
+    func testEncodingKeepsTheDetails() async throws {
+        let scene = try await scene(from: Fixture.completeSceneWithDetails)
+
+        let again = try JSONDecoder().decode(SplatScene.self, from: JSONEncoder().encode(scene))
+
+        XCTAssertEqual(again, scene)
+        XCTAssertEqual(again.preset, .standard)
+        XCTAssertEqual(again.modelSizes.ply, 460_000_000)
+    }
+
+    func testDetailsTakePartInEquality() {
+        let plain = SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast)
+        let detailed = SplatScene(
+            id: "local",
+            status: .complete,
+            createdAt: .distantPast,
+            updatedAt: .distantPast,
+            preset: .ultra,
+            psnr: 27.5,
+            trainingTime: 1_800,
+            processingStartedAt: .distantPast,
+            processingCompletedAt: .distantPast,
+            modelSizes: SplatScene.ModelSizes(sog: 48_000_000)
+        )
+
+        XCTAssertNotEqual(plain, detailed)
+        XCTAssertNil(plain.preset)
+        XCTAssertEqual(plain.modelSizes, SplatScene.ModelSizes())
+        XCTAssertEqual(detailed.modelSizes.sog, 48_000_000)
+        XCTAssertNil(detailed.modelSizes.spz)
+    }
+}
+
+// MARK: - Quality metrics
+//
+// psnr_holdout, ssim_holdout and ssim (toPublicScene in api/src/lib/scenes.ts),
+// which API 1.3.0 already sends. Null where a scene has none, as on `fast`
+// scenes, which hold no photos out; missing in list items before 1.3.0.
+
+extension SplatClientTests {
+
+    func testCompleteSceneCarriesItsMetrics() async throws {
+        let scene = try await scene(from: Fixture.completeScene)
+
+        XCTAssertEqual(scene.psnrHoldout, 24.28)
+        XCTAssertEqual(scene.ssimHoldout, 0.79)
+        XCTAssertEqual(scene.ssim, 0.82)
+    }
+
+    func testNullMetricsReadNil() async throws {
+        let scene = try await scene(from: Fixture.completeFastScene)
+
+        XCTAssertEqual(scene.preset, .fast)
+        XCTAssertEqual(scene.psnr, 26.1)
+        XCTAssertNil(scene.psnrHoldout)
+        XCTAssertNil(scene.ssimHoldout)
+        XCTAssertNil(scene.ssim)
+    }
+
+    func testMissingMetricsReadNil() async throws {
+        let scene = try await scene(from: Fixture.completeSceneWithoutMetrics)
+
+        XCTAssertTrue(scene.isComplete)
+        XCTAssertNil(scene.psnrHoldout)
+        XCTAssertNil(scene.ssimHoldout)
+        XCTAssertNil(scene.ssim)
+    }
+
+    func testEncodingKeepsTheMetrics() async throws {
+        let scene = try await scene(from: Fixture.completeScene)
+
+        let again = try JSONDecoder().decode(SplatScene.self, from: JSONEncoder().encode(scene))
+
+        XCTAssertEqual(again, scene)
+        XCTAssertEqual(again.psnrHoldout, 24.28)
+        XCTAssertEqual(again.ssimHoldout, 0.79)
+        XCTAssertEqual(again.ssim, 0.82)
+    }
+
+    func testMetricsTakePartInEquality() {
+        let plain = SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast)
+        let variants = [
+            SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast, psnrHoldout: 24.28),
+            SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast, ssimHoldout: 0.79),
+            SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast, ssim: 0.82),
+        ]
+
+        XCTAssertNil(plain.psnrHoldout)
+        XCTAssertNil(plain.ssimHoldout)
+        XCTAssertNil(plain.ssim)
+        for variant in variants {
+            XCTAssertNotEqual(plain, variant)
+        }
+    }
+}
