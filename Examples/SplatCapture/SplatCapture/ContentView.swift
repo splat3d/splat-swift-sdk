@@ -224,7 +224,6 @@ struct CaptureRoot: View {
                 }
             }
         }
-        .tint(Palette.accent)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 model.appBecameActive()

@@ -60,7 +60,6 @@ struct PreviewHarness: View {
             NavigationStack {
                 RecentScenesView(previewing: RecentScenesModel(previewing: Self.scenesState(state)))
             }
-            .tint(Palette.accent)
         case let state where state.hasPrefix("viewer"):
             NavigationStack {
                 SceneViewerScreen(

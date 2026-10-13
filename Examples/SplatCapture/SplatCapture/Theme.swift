@@ -7,11 +7,11 @@ import CoreText
 // Liquid Glass on iOS 26, rounded materials before it. Glass is for the layer
 // that floats over content: buttons, toolbars, and the overlays on the camera
 // and the 3D viewer. Content sits in rounded cards on the grouped ground, as
-// in Settings. One accent, Rinse blue, marks what you can act on or what is
-// moving. Hanken Grotesk sets the headlines, Martian Mono the data (scene
+// in Settings. One accent, Rinse blue, fills the primary action and marks
+// progress and status; other labels on glass stay monochrome. Hanken Grotesk sets the headlines, Martian Mono the data (scene
 // IDs, numbers, sizes), and the system font everything else.
 //
-//   Palette ─────> the brand's colors, the system's grounds
+//   Palette ─────> the brand's colors, with Increase Contrast variants
 //   TypeStyle ───> .typeStyle(.display): the bundled fonts, Dynamic Type
 //   Card, CardSection, CardDivider, FactRow, NoticeCard ──> content
 //   StatusDot, StatusLabel ──> a colored dot and its text
@@ -26,28 +26,40 @@ import CoreText
 //   iOS 26+                  iOS 17–25
 //   .glassProminent    <──>  .borderedProminent   primary
 //   .glass             <──>  .bordered            secondary, destructive
+//   .bordered          <──>  .bordered            a button in a card (never glass)
 //   .glassEffect       <──>  .regularMaterial     overlays
 //   GlassEffectContainer <─> the content alone
 
 // MARK: - Palette
 
-/// The brand's colors, each following the light or dark appearance, and the
-/// system's grouped grounds.
+/// The brand's colors, each following the light or dark appearance and
+/// Increase Contrast, and the system's grouped grounds.
 enum Palette {
 
     /// The same colors for UIKit: SceneKit's mesh material.
     enum UI {
-        static let accent = dynamic(light: 0x0064B8, dark: 0x7AC8F5)
-        static let onAccent = dynamic(light: 0xFFFFFF, dark: 0x0D0E10)
+        // With Increase Contrast, text colors move away from the ground
+        // (accent 6.0 to 8.6:1 on white, alarm 5.6 to 8.1:1), and the alarm
+        // tint moves away from the alarm text on it.
+        static let accent = dynamic(Shades(light: 0x0064B8, dark: 0x7AC8F5), increased: Shades(light: 0x004C8F, dark: 0xA6DCFA))
+        static let onAccent = dynamic(Shades(light: 0xFFFFFF, dark: 0x0D0E10), increased: Shades(light: 0xFFFFFF, dark: 0x000000))
         /// The accent's split partner, the mark's second channel.
-        static let split = dynamic(light: 0x7FB4E3, dark: 0x2F6FA8)
-        static let alarm = dynamic(light: 0xC52C2A, dark: 0xEE6E63)
-        static let alarmTint = dynamic(light: 0xFBEAEA, dark: 0x2A1615)
+        static let split = dynamic(Shades(light: 0x7FB4E3, dark: 0x2F6FA8), increased: Shades(light: 0x5E9DD8, dark: 0x3D84C4))
+        static let alarm = dynamic(Shades(light: 0xC52C2A, dark: 0xEE6E63), increased: Shades(light: 0x9C1C1A, dark: 0xFF968D))
+        static let alarmTint = dynamic(Shades(light: 0xFBEAEA, dark: 0x2A1615), increased: Shades(light: 0xFFF2F2, dark: 0x1E0E0D))
 
-        /// A color for each appearance, from 0xRRGGBB.
-        private static func dynamic(light: UInt32, dark: UInt32) -> UIColor {
+        /// A color for light and for dark, each 0xRRGGBB.
+        private struct Shades {
+            let light: UInt32
+            let dark: UInt32
+        }
+
+        /// A color for each appearance, and a stronger pair for Increase
+        /// Contrast.
+        private static func dynamic(_ standard: Shades, increased: Shades) -> UIColor {
             UIColor { traits in
-                rgb(traits.userInterfaceStyle == .dark ? dark : light)
+                let shades = traits.accessibilityContrast == .high ? increased : standard
+                return rgb(traits.userInterfaceStyle == .dark ? shades.dark : shades.light)
             }
         }
 
@@ -430,17 +442,19 @@ enum ActionRole {
     case destructive
 }
 
-/// How wide a button is.
+/// How wide a button is, which says where it sits.
 enum ActionWidth {
-    /// The width of its container: the actions at the end of a screen.
+    /// The width of its container: the actions at the end of a screen, or
+    /// over the camera. Glass on iOS 26.
     case full
-    /// The width of its label: a button inside a card.
+    /// The width of its label: a button inside a card or on the ground.
+    /// Content, so bordered on every OS, never glass.
     case fitted
 }
 
 extension View {
-    /// A capsule button: glass on iOS 26, bordered before it. Works on
-    /// Button, Link and NavigationLink.
+    /// A capsule button: glass on iOS 26, bordered before it, and bordered
+    /// on every OS when fitted. Works on Button, Link and NavigationLink.
     func actionStyle(_ role: ActionRole, width: ActionWidth = .full) -> some View {
         buttonStyle(ActionButtonStyle(role: role, width: width))
     }
@@ -458,13 +472,14 @@ private struct ActionButtonStyle: PrimitiveButtonStyle {
         } label: {
             ActionLabel(label: configuration.label, role: role, width: width)
         }
-        .modifier(ActionLook(role: role))
+        .modifier(ActionLook(role: role, width: width))
         .buttonBorderShape(.capsule)
         .controlSize(.large)
     }
 }
 
-/// The label in its width, and on the accent, in the accent's text color.
+/// The label in its width and color: the accent's text color on the
+/// accent, and monochrome on glass.
 private struct ActionLabel<Label: View>: View {
     let label: Label
     let role: ActionRole
@@ -477,8 +492,28 @@ private struct ActionLabel<Label: View>: View {
             .fontWeight(.semibold)
             .multilineTextAlignment(.center)
             .frame(maxWidth: width == .full ? .infinity : nil)
-            // Disabled, the system greys the fill and the text together.
-            .foreground(role == .primary && isEnabled ? Palette.onAccent : nil)
+            .foreground(color)
+    }
+
+    /// `nil` leaves the style's color: the tint on a bordered button, red on
+    /// a destructive one. Disabled, the system greys the fill and the text
+    /// together, so there is no color of its own then.
+    private var color: Color? {
+        guard isEnabled, width == .full else {
+            return nil
+        }
+        switch role {
+        case .primary:
+            return Palette.onAccent
+        case .secondary:
+            // Color on glass is for meaning: a secondary label is plain.
+            if #available(iOS 26, *) {
+                return .primary
+            }
+            return nil
+        case .destructive:
+            return nil
+        }
     }
 }
 
@@ -494,11 +529,22 @@ private extension View {
     }
 }
 
-/// The system style for a role: glass on iOS 26, bordered before it.
+/// The system style for a role and width.
 private struct ActionLook: ViewModifier {
     let role: ActionRole
+    let width: ActionWidth
 
     func body(content: Content) -> some View {
+        if width == .fitted {
+            content.buttonStyle(.bordered).tint(tint)
+        } else {
+            floating(content)
+        }
+    }
+
+    /// Glass on iOS 26, bordered before it.
+    @ViewBuilder
+    private func floating(_ content: Content) -> some View {
         if #available(iOS 26, *) {
             switch role {
             case .primary:
@@ -512,12 +558,14 @@ private struct ActionLook: ViewModifier {
             switch role {
             case .primary:
                 content.buttonStyle(.borderedProminent).tint(Palette.accent)
-            case .secondary:
-                content.buttonStyle(.bordered).tint(Palette.accent)
-            case .destructive:
-                content.buttonStyle(.bordered).tint(Palette.alarm)
+            case .secondary, .destructive:
+                content.buttonStyle(.bordered).tint(tint)
             }
         }
+    }
+
+    private var tint: Color {
+        role == .destructive ? Palette.alarm : Palette.accent
     }
 }
 
