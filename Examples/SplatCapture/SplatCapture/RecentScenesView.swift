@@ -188,12 +188,13 @@ private struct SceneRow: View {
         return "\(scene.status.shortName) · \(preset)"
     }
 
-    /// "a1b2c3d4 · 2 days ago · 1.9M splats": the ID in mono, the age and
-    /// size in words, in the system font.
+    /// "a1b2c3d4 · 2 days ago · 1.94M splats": the ID in mono, the age and
+    /// size in words, in the system font. The count as Ready and the info
+    /// sheet write it.
     private var details: Text {
         var words = [scene.createdAt.formatted(.relative(presentation: .named))]
         if let count = scene.numGaussians {
-            words.append("\(count.formatted(.number.notation(.compactName))) splats")
+            words.append("\(FactFormat.splats(count)) splats")
         }
         let id = TypeStyle.smallData.text(String(scene.id.prefix(Self.idPrefix)), at: dynamicTypeSize)
         let rest = Text(" · " + words.joined(separator: " · ")).font(.caption)
