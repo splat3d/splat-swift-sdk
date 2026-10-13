@@ -241,7 +241,11 @@ struct ThumbnailPlaceholder: View {
 
     let style: Style
 
-    private static let markOpacity = 0.35
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// The mark screens its channels on dark grounds, which dims it: it
+    /// needs more opacity there to read as faint as on light.
+    private static let markOpacity = (light: 0.4, dark: 0.8)
     private static let markInset: CGFloat = 0.28
     private static let symbolScale: CGFloat = 0.4
 
@@ -254,7 +258,7 @@ struct ThumbnailPlaceholder: View {
                     case .mark:
                         Mark()
                             .padding(side * Self.markInset)
-                            .opacity(Self.markOpacity)
+                            .opacity(colorScheme == .dark ? Self.markOpacity.dark : Self.markOpacity.light)
                     case .symbol:
                         Image(systemName: "cube.transparent")
                             .font(.system(size: side * Self.symbolScale, weight: .light))

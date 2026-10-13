@@ -85,6 +85,8 @@ enum Theme {
     static let margin: CGFloat = 20
     /// Inset of a card's rows.
     static let rowInset: CGFloat = 16
+    /// Space above and below a row's text.
+    static let rowPadding: CGFloat = 14
     /// Smallest comfortable touch target (Apple's Human Interface Guidelines).
     static let touchTarget: CGFloat = 44
 
@@ -266,9 +268,9 @@ struct FactRow<Value: View>: View {
                 }
             }
         }
-        .frame(minHeight: Theme.touchTarget)
         .padding(.horizontal, Theme.rowInset)
-        .padding(.vertical, 6)
+        .padding(.vertical, Theme.rowPadding)
+        .frame(minHeight: Theme.touchTarget)
     }
 }
 
@@ -288,13 +290,24 @@ enum DotState: Equatable {
 struct StatusDot: View {
     let state: DotState
 
-    private static let size: CGFloat = 10
+    /// Grows with the text, as the text beside it does.
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 10
+    /// How far above the text's baseline the dot's centre sits: about half
+    /// a lowercase letter's height, so the dot lines up with the first line.
+    @ScaledMetric(relativeTo: .body) private var baselineOffset: CGFloat = 6
+
     private static let ringWidth: CGFloat = 2.5
     private static let trackOpacity = 0.25
+    /// The least of the ring that shows while running, so 0% still reads
+    /// as started.
+    private static let minimumArc = 0.12
 
     var body: some View {
         dot
-            .frame(width: Self.size, height: Self.size)
+            .frame(width: size, height: size)
+            .alignmentGuide(.firstTextBaseline) { dimensions in
+                dimensions[VerticalAlignment.center] + baselineOffset
+            }
             .accessibilityHidden(true)
     }
 
@@ -313,7 +326,7 @@ struct StatusDot: View {
                 Circle()
                     .stroke(Palette.accent.opacity(Self.trackOpacity), lineWidth: Self.ringWidth)
                 Circle()
-                    .trim(from: 0, to: min(max(progress, 0), 1))
+                    .trim(from: 0, to: min(max(progress, Self.minimumArc), 1))
                     .stroke(Palette.accent, style: StrokeStyle(lineWidth: Self.ringWidth, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
@@ -328,7 +341,8 @@ struct StatusLabel: View {
     let text: String
 
     var body: some View {
-        HStack(spacing: 7) {
+        // By the first line, when the text wraps.
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
             StatusDot(state: state)
             Text(text)
         }
@@ -605,8 +619,11 @@ struct Choice<Value: Hashable>: View {
 
     private static var spacing: CGFloat { 8 }
     private static var columns: Int { 2 }
-    /// "Standard" needs about 0.7 to fit half a phone's width at the largest size.
-    private static var minimumScale: CGFloat { 0.6 }
+    /// The largest text a grid button's label takes. Larger, "Standard"
+    /// truncated in half a phone's width, beside a whole "Fast".
+    private static var largestLabel: DynamicTypeSize { .accessibility1 }
+    /// A last resort, for a narrower screen.
+    private static var minimumScale: CGFloat { 0.8 }
 
     var body: some View {
         if dynamicTypeSize.isAccessibilitySize {
@@ -637,6 +654,7 @@ struct Choice<Value: Hashable>: View {
             Text(title(option))
                 .lineLimit(1)
                 .minimumScaleFactor(Self.minimumScale)
+                .dynamicTypeSize(...Self.largestLabel)
         }
         .actionStyle(selected ? .primary : .secondary)
         .accessibilityAddTraits(selected ? .isSelected : [])

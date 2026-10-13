@@ -274,9 +274,9 @@ private struct StepRow: View {
                     .lineLimit(1)
             }
         }
-        .frame(minHeight: Theme.touchTarget)
         .padding(.horizontal, Theme.rowInset)
-        .padding(.vertical, 6)
+        .padding(.vertical, Theme.rowPadding)
+        .frame(minHeight: Theme.touchTarget)
         .accessibilityElement(children: .combine)
     }
 

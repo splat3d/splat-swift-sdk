@@ -210,7 +210,6 @@ struct CaptureRoot: View {
                             ToolbarItem(placement: .topBarTrailing) {
                                 NavigationLink(value: Route.recentScenes) {
                                     Label("Scenes", systemImage: "square.stack.3d.up")
-                                        .labelStyle(.titleAndIcon)
                                 }
                             }
                         }
