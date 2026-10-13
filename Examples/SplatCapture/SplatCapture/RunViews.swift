@@ -546,9 +546,20 @@ struct CompleteView: View {
             }
 
             Section {
+                if let preset = scene.presetName {
+                    FactRow(label: "Preset") {
+                        Text(preset)
+                    }
+                }
                 FactRow(label: "Splats") {
-                    Text(scene.numGaussians.map { $0.formatted(.number.notation(.compactName)) } ?? "—")
+                    Text(scene.numGaussians.map(FactFormat.splats) ?? "—")
                         .typeStyle(.data)
+                }
+                // API 1.5.0 on; older APIs send no training time.
+                if let training = scene.trainingTime {
+                    FactRow(label: "Training") {
+                        Text(FactFormat.duration(training))
+                    }
                 }
                 FactRow(label: "Created") {
                     Text(scene.createdAt.formatted(date: .abbreviated, time: .shortened))

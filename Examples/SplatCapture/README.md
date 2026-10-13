@@ -71,12 +71,13 @@ the scene and says it can't draw it.
    processing and follows it step by step: upload (with bytes sent), launch,
    process (the stage in words, and the percent), and the scene's thumbnail
    as soon as the pipeline makes one
-7. When done, tap **View in 3D** to explore it in the app. **Open on
-   splat-3d.com** (the web viewer) and **Delete scene** are in the **More**
-   menu (…) at the top right
+7. When done, the screen shows the preset and the training time, and **View
+   in 3D** explores the scene in the app. **Open on splat-3d.com** (the web
+   viewer) and **Delete scene** are in the **More** menu (…) at the top right
 
-**Scenes** (top right) lists the account's latest scenes with their status.
-A complete one opens in 3D. Swipe or long-press a row to delete it.
+**Scenes** (top right) lists the account's latest scenes with their status
+and preset. A complete one opens in 3D. Swipe or long-press a row to delete
+it.
 
 ## When a run stops
 

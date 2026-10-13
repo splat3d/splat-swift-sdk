@@ -166,7 +166,7 @@ private struct SceneRow: View {
                 Text(scene.displayTitle)
                     .font(.headline)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                StatusLabel(state: scene.status.dot(percent: scene.processingPct), text: scene.status.shortName)
+                StatusLabel(state: scene.status.dot(percent: scene.processingPct), text: statusText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 details
@@ -177,6 +177,15 @@ private struct SceneRow: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityHint(scene.isComplete ? "Opens the scene in 3D" : "")
+    }
+
+    /// "Ready · Standard": the status, then the preset when the API names
+    /// one. At accessibility sizes the status alone, which fills its line.
+    private var statusText: String {
+        guard let preset = scene.presetName, !dynamicTypeSize.isAccessibilitySize else {
+            return scene.status.shortName
+        }
+        return "\(scene.status.shortName) · \(preset)"
     }
 
     /// "a1b2c3d4 · 2 days ago · 1.9M splats": the ID in mono, the age and

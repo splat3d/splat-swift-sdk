@@ -228,11 +228,12 @@ struct PreviewHarness: View {
         default:
             let day: TimeInterval = 24 * 60 * 60
             return .loaded([
-                SplatScene(id: "f0e1d2c3b4a5", title: "Kitchen counter", status: .training, processingPct: 42, createdAt: Date()),
+                SplatScene(id: "f0e1d2c3b4a5", title: "Kitchen counter", status: .training, processingPct: 42, createdAt: Date(), preset: .fast),
                 scene,
-                SplatScene(id: "0a9b8c7d6e5f", title: "Stairwell", status: .failed, createdAt: Date().addingTimeInterval(-2 * day)),
-                SplatScene(id: "5e4d3c2b1a0f", title: "Plant", status: .complete, numGaussians: 820_000, createdAt: Date().addingTimeInterval(-6 * day)),
-                SplatScene(id: "9f8e7d6c5b4a", title: nil, status: .uploading, createdAt: Date().addingTimeInterval(-9 * day)),
+                SplatScene(id: "0a9b8c7d6e5f", title: "Stairwell", status: .failed, createdAt: Date().addingTimeInterval(-2 * day), preset: .ultra),
+                SplatScene(id: "5e4d3c2b1a0f", title: "Plant", status: .complete, numGaussians: 820_000, createdAt: Date().addingTimeInterval(-6 * day), preset: .quality),
+                SplatScene(id: "9f8e7d6c5b4a", title: nil, status: .uploading, createdAt: Date().addingTimeInterval(-9 * day), preset: .fast),
+                // From an API before 1.5.0: no preset.
                 SplatScene(id: "3c2b1a0f9e8d", title: "Bike", status: .cancelled, createdAt: Date().addingTimeInterval(-12 * day)),
             ])
         }
