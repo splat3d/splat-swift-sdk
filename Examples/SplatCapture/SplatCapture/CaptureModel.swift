@@ -414,8 +414,13 @@ final class CaptureModel: ObservableObject {
         if let interruption = paused.interruption {
             let progress = RunProgress(step: Self.step(resuming: interruption.phase), sceneID: interruption.sceneID)
             perform(from: progress) { [weak self] client in
-                try await client.resume(interruption) { status, percent in
-                    self?.report(status, percent)
+                guard let self else {
+                    throw CancellationError()
+                }
+                return try await self.resumeOrUpload(interruption.sceneID, with: client) {
+                    try await client.resume(interruption) { [weak self] status, percent in
+                        self?.report(status, percent)
+                    }
                 }
             }
             return
@@ -430,30 +435,48 @@ final class CaptureModel: ObservableObject {
         // After a relaunch, rebuild the launch from disk. resume(sceneID:…)
         // replays a launch that went through, and can't upload: a video that
         // never landed ends in source_missing, before anything is charged.
-        // Then the capture goes up to a new scene, as Upload again does.
         guard let run = store.loadRun(), let launch = try? store.loadLaunch() else {
             fail(Self.captureUnreadable(sceneID: sceneID))
             return
         }
         perform(from: RunProgress(step: .launching, sceneID: sceneID)) { [weak self] client in
-            do {
-                return try await client.resume(
+            guard let self else {
+                throw CancellationError()
+            }
+            return try await self.resumeOrUpload(sceneID, with: client) {
+                try await client.resume(
                     sceneID: sceneID,
                     preset: run.preset.params,
                     arkitPoses: launch.poses,
                     lidarPoints: launch.lidarPoints
-                ) { status, percent in
+                ) { [weak self] status, percent in
                     self?.report(status, percent)
                 }
-            } catch {
-                guard let self, Self.videoNeverLanded(error, sceneID: sceneID) else {
-                    throw error
-                }
-                try Task.checkCancellation()
-                self.deleteUnlaunched(sceneID)
-                self.forgetScene()
-                return try await self.uploadAndProcess(run, launch, with: client)
             }
+        }
+    }
+
+    /// Run a resume of `sceneID`. If it finds that the video never reached
+    /// the scene, which the API says before charging anything, the scene is
+    /// deleted and the saved capture goes up to a new one, as Upload again
+    /// does. That happens after a relaunch: the upload URL is gone, so resume
+    /// can't upload, even once the network is back.
+    private func resumeOrUpload(_ sceneID: String, with client: SplatClient, _ resume: () async throws -> SplatScene) async throws -> SplatScene {
+        do {
+            return try await resume()
+        } catch {
+            // A cancelled run stops on the error itself: a discard ignores it,
+            // and when background time ran out the failed screen offers
+            // Upload again for this scene.
+            guard !Task.isCancelled, Self.videoNeverLanded(error, sceneID: sceneID) else {
+                throw error
+            }
+            guard let run = store.loadRun(), let launch = try? store.loadLaunch() else {
+                throw error
+            }
+            deleteUnlaunched(sceneID)
+            forgetScene()
+            return try await uploadAndProcess(run, launch, with: client)
         }
     }
 
