@@ -136,6 +136,43 @@ struct TrackingStatus: Equatable {
     let dot: DotState
 }
 
+// MARK: - Capture length
+//
+// The API refuses a video under 30 seconds with 422 source_unusable, before
+// charging anything. Stopping sooner asks first, rather than uploading a
+// capture the server would refuse:
+//
+//   Stop ──> stopAction(after: elapsed)
+//              ├─ under the minimum ──> .ask     Keep recording | Discard scan
+//              └─ the minimum or more ─> .upload  stop and upload, as always
+
+enum CaptureLength {
+
+    /// The API's minimum video length: MIN_VIDEO_SECONDS in the Splat3D
+    /// repo's packages/core/src/preflight.ts.
+    static let minimum: TimeInterval = 30
+
+    /// "30 seconds", for copy that says how long to record.
+    static let minimumText = "\(Int(minimum)) seconds"
+
+    /// What Stop does.
+    enum StopAction: Equatable {
+        /// Long enough: stop, save and upload.
+        case upload
+        /// Too short for the API: ask to keep recording or discard the scan.
+        case ask
+    }
+
+    /// What Stop does after `elapsed` seconds of recording: 29.9 asks,
+    /// 30 uploads.
+    static func stopAction(after elapsed: TimeInterval) -> StopAction {
+        guard elapsed >= minimum else {
+            return .ask
+        }
+        return .upload
+    }
+}
+
 // MARK: - CaptureModel
 
 @MainActor

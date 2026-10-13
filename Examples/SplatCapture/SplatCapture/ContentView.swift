@@ -299,7 +299,7 @@ struct HomeView: View {
         Screen(
             title: "Capture",
             titleDisplay: .large,
-            lead: "Walk slowly around what you want to keep, for 15 to 60 seconds. Splat Capture records video and ARKit camera poses, and Splat3D turns them into a Gaussian splat scene."
+            lead: "Walk slowly around what you want to keep, for at least \(CaptureLength.minimumText). Splat Capture records video and ARKit camera poses, and Splat3D turns them into a Gaussian splat scene."
         ) {
             if let notice = model.notice {
                 NoticeCard(tone: notice.isError ? .alarm : .done, title: notice.title, detail: notice.detail) {
@@ -449,6 +449,8 @@ struct ScanningView: View {
     /// Set by Stop and upload or Cancel, so the other can't run after it.
     @State private var isStopping = false
     @State private var confirmingCancel = false
+    /// Set by Stop before CaptureLength.minimum: keep recording or discard.
+    @State private var confirmingShortStop = false
 
     #if DEBUG
     @Environment(\.previewBackdrop) private var previewBackdrop
@@ -522,6 +524,17 @@ struct ScanningView: View {
                 }
             }
             .padding(Theme.margin)
+            // Stop came before the API's minimum. Keep recording leaves the
+            // scan running; Discard throws it away as Cancel does.
+            .confirmationDialog("Keep recording?", isPresented: $confirmingShortStop, titleVisibility: .visible) {
+                Button("Keep recording", role: .cancel) {}
+                Button("Discard scan", role: .destructive) {
+                    isStopping = true
+                    Task { await model.cancelScan() }
+                }
+            } message: {
+                Text("You've recorded \(duration). Splat3D needs at least \(CaptureLength.minimumText) of video to build a scene. Discarding deletes the video and poses: nothing is uploaded or charged.")
+            }
         }
         .environment(\.colorScheme, .dark)
         .confirmationDialog("Discard this scan?", isPresented: $confirmingCancel, titleVisibility: .visible) {
@@ -570,8 +583,15 @@ struct ScanningView: View {
 
     private var stopButton: some View {
         Button("Stop and upload") {
-            isStopping = true
-            Task { await model.stopAndUpload(preset: preset) }
+            // The timer on screen decides: under the minimum, the API would
+            // refuse the video, so ask instead of uploading.
+            switch CaptureLength.stopAction(after: model.elapsed) {
+            case .ask:
+                confirmingShortStop = true
+            case .upload:
+                isStopping = true
+                Task { await model.stopAndUpload(preset: preset) }
+            }
         }
         .actionStyle(.primary)
         .disabled(isStopping)

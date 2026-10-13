@@ -62,11 +62,16 @@ the scene and says it can't draw it.
    camera access and the API key.
 2. Tap **Start capture**. The camera view opens with a blue mesh overlay
    showing surfaces detected by the LiDAR scanner
-3. Slowly walk around the scene you want to capture (15–60 seconds is ideal)
+3. Slowly walk around the scene you want to capture, for at least 30
+   seconds: the API refuses a shorter video with a 422 `source_unusable`,
+   before charging anything
 4. Watch the **pose** and **frame** counters in the top-right, and the
    **tracking** status above the stop button
 5. Tap **Stop and upload** when done, or **Cancel** to delete the scan
-   without uploading it
+   without uploading it. Before 30 seconds, Stop asks first and shows the
+   time recorded: **Keep recording**, or **Discard scan**, which deletes it
+   as Cancel does. The minimum is `CaptureLength.minimum` in
+   `CaptureModel.swift`
 6. The app saves the capture, uploads the video and ARKit poses, launches
    processing and follows it step by step: upload (with bytes sent), launch,
    process (the stage in words, and the percent), and the scene's thumbnail

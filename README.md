@@ -65,7 +65,7 @@ scanner.onFrameCountUpdated = { count in
     frameCountLabel.text = "\(count) poses captured"
 }
 
-// ... user walks around the scene ...
+// ... user walks around the scene for at least 30 seconds ...
 
 // Stop and get results
 let capture = try await scanner.stop()
@@ -78,6 +78,8 @@ let scene = try await client.createAndProcess(
     arkitPoses: capture.poses
 )
 ```
+
+**Record at least 30 seconds.** The API refuses a shorter video with a 422 `source_unusable` when it is launched, before charging anything, and the scene stays `uploading`. `createAndProcess` throws that as `SplatError.interrupted`, and `resume` meets the same refusal, so delete the scene. `SplatScanner` has no minimum: time the scan yourself. The [SplatCapture](Examples/SplatCapture) example asks to keep recording or discard when Stop comes sooner.
 
 ## View scenes in 3D
 
