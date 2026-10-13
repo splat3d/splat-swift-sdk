@@ -11,12 +11,19 @@ import SplatKit
 // Both modules import side by side: Splat3D was named SplatKit before 1.0 and
 // was renamed so it wouldn't clash with this renderer.
 
-/// Downloads a scene's SPZ and shows it with SplatKit.
+/// What the viewer shows over the scene.
+enum ViewerSheet: Identifiable {
+    /// The scene's details: SceneInfoSheet.
+    case info
+
+    var id: Self { self }
+}
+
+/// Downloads a scene's SPZ and shows it with SplatKit. Info, in the
+/// navigation bar, opens the scene's details.
 struct SceneViewerScreen: View {
 
-    let title: String
-    /// The scene on splat-3d.com, offered when asking again can't help.
-    let webURL: URL?
+    let scene: SplatScene
 
     @StateObject private var model: SceneViewerModel
     @Environment(\.scenePhase) private var scenePhase
@@ -29,24 +36,33 @@ struct SceneViewerScreen: View {
     @State private var userFlipped = false
     @State private var walkSpeed: Float = 0
     @State private var resetCount = 0
+    @State private var sheet: ViewerSheet?
 
     /// Scene units per second while a move arrow is held.
     private static let walkingSpeed: Float = 0.6
 
-    init(sceneID: String, title: String, webURL: URL?) {
-        self.title = title
-        self.webURL = webURL
-        _model = StateObject(wrappedValue: SceneViewerModel(sceneID: sceneID))
+    init(scene: SplatScene) {
+        self.scene = scene
+        _model = StateObject(wrappedValue: SceneViewerModel(sceneID: scene.id))
     }
 
     #if DEBUG
-    init(title: String, webURL: URL?, previewing model: SceneViewerModel, mode: NavigationMode = .orbit) {
-        self.title = title
-        self.webURL = webURL
+    init(scene: SplatScene, previewing model: SceneViewerModel, mode: NavigationMode = .orbit, presenting sheet: ViewerSheet? = nil) {
+        self.scene = scene
         _model = StateObject(wrappedValue: model)
         _mode = State(initialValue: mode)
+        _sheet = State(initialValue: sheet)
     }
     #endif
+
+    private var title: String {
+        scene.displayTitle
+    }
+
+    /// The scene on splat-3d.com, offered when asking again can't help.
+    private var webURL: URL? {
+        scene.viewerURL
+    }
 
     var body: some View {
         ZStack {
@@ -56,6 +72,14 @@ struct SceneViewerScreen: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // In every phase: the details don't need the downloaded model.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    sheet = .info
+                } label: {
+                    Label("Scene info", systemImage: ToolbarSymbol.named("info"))
+                }
+            }
             if showsControls {
                 controls
             }
@@ -64,6 +88,11 @@ struct SceneViewerScreen: View {
         // Outside the toolbar, so its controls are dark too: in light mode
         // the segmented control drew black labels on the dark glass.
         .environment(\.colorScheme, .dark)
+        // Outside the dark override: the sheet is content, in the system's
+        // appearance.
+        .sheet(item: $sheet) { _ in
+            SceneInfoSheet(scene: scene, viewing: SceneViewerModel.format)
+        }
         .task { await model.load() }
         .onDisappear { model.close() }
     }
@@ -280,6 +309,9 @@ final class SceneViewerModel: ObservableObject {
     @Published private(set) var worldReady = false
     @Published private(set) var stats: SplatStats?
 
+    /// The format load() downloads: the one SplatKit reads.
+    static let format = ModelFormat.spz
+
     private static let progressInterval: Duration = .milliseconds(250)
 
     private let sceneID: String
@@ -359,7 +391,7 @@ final class SceneViewerModel: ObservableObject {
         defer { progress.cancel() }
 
         do {
-            let downloaded = try await client.downloadScene(id: sceneID, format: .spz)
+            let downloaded = try await client.downloadScene(id: sceneID, format: Self.format)
 
             // A retry outlives its screen: once it closed, or a newer load
             // began, nothing will show this file.
@@ -369,7 +401,7 @@ final class SceneViewerModel: ObservableObject {
             }
 
             // The extension is the format the server actually sent.
-            guard downloaded.pathExtension == ModelFormat.spz.rawValue else {
+            guard downloaded.pathExtension == Self.format.rawValue else {
                 try? FileManager.default.removeItem(at: downloaded)
                 phase = .failed(.otherFormat(downloaded.pathExtension))
                 return

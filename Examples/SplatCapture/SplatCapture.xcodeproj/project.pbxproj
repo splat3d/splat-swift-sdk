@@ -13,6 +13,7 @@
 		A1000017229F0001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000018229F0001 /* Assets.xcassets */; };
 		A100001B229F0001 /* SplatWorldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001C229F0001 /* SplatWorldView.swift */; };
 		A100001D229F0001 /* SceneViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001E229F0001 /* SceneViewer.swift */; };
+		A1000037229F0001 /* SceneInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000038229F0001 /* SceneInfo.swift */; };
 		A100001F229F0001 /* RecentScenesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020229F0001 /* RecentScenesView.swift */; };
 		A1000021229F0001 /* SplatKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1000023229F0001 /* SplatKit */; };
 		A1000024229F0001 /* CaptureModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000025229F0001 /* CaptureModel.swift */; };
@@ -35,6 +36,7 @@
 		A100001A229F0001 /* SplatCapture.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = SplatCapture.xcconfig; sourceTree = "<group>"; };
 		A100001C229F0001 /* SplatWorldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatWorldView.swift; sourceTree = "<group>"; };
 		A100001E229F0001 /* SceneViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneViewer.swift; sourceTree = "<group>"; };
+		A1000038229F0001 /* SceneInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SceneInfo.swift"; sourceTree = "<group>"; };
 		A1000020229F0001 /* RecentScenesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentScenesView.swift; sourceTree = "<group>"; };
 		A1000025229F0001 /* CaptureModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CaptureModel.swift"; sourceTree = "<group>"; };
 		A1000027229F0001 /* CaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CaptureStore.swift"; sourceTree = "<group>"; };
@@ -79,6 +81,7 @@
 				A1000029229F0001 /* RunViews.swift */,
 				A1000020229F0001 /* RecentScenesView.swift */,
 				A100001E229F0001 /* SceneViewer.swift */,
+				A1000038229F0001 /* SceneInfo.swift */,
 				A100001C229F0001 /* SplatWorldView.swift */,
 				A100002B229F0001 /* Theme.swift */,
 				A100002D229F0001 /* PreviewHarness.swift */,
@@ -188,6 +191,7 @@
 				A1000003229F0001 /* ContentView.swift in Sources */,
 				A100001F229F0001 /* RecentScenesView.swift in Sources */,
 				A100001D229F0001 /* SceneViewer.swift in Sources */,
+				A1000037229F0001 /* SceneInfo.swift in Sources */,
 				A100001B229F0001 /* SplatWorldView.swift in Sources */,
 				A1000024229F0001 /* CaptureModel.swift in Sources */,
 				A1000026229F0001 /* CaptureStore.swift in Sources */,

@@ -198,6 +198,8 @@ All notable changes to Splat3D. Versions follow [Semantic Versioning](https://se
   run stops. An interrupted run resumes with `resume(_:)`, and after the app
   is killed with `resume(sceneID:…)` from a capture it keeps on disk, without
   paying twice. Building it needs Xcode 26; the SDK still builds with 16.4.
+- SplatCapture's viewer has an Info sheet with a scene's details: preset,
+  splats, quality metrics, training and processing time, and file sizes.
 - A "View scenes in 3D" section in the README. It covers downloading SPZ and
   drawing it with SplatKit, including SplatKit's iOS 17 and A14 requirement,
   its orientation, and its SPZ size limit. Splat3D doesn't depend on SplatKit.

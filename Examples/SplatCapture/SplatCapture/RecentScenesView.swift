@@ -113,7 +113,7 @@ struct RecentScenesView: View {
     private func row(_ scene: SplatScene) -> some View {
         Group {
             if scene.isComplete {
-                NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
+                NavigationLink(value: Route.viewer(scene)) {
                     SceneRow(scene: scene, thumbnails: model.thumbnails)
                 }
             } else {

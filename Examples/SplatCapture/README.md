@@ -120,7 +120,9 @@ A state ending in `-accessibility`, such as `home-accessibility`, shows it at
 the largest Dynamic Type size. `scanning-bright` and
 `viewer-orbit-bright` put a bright room behind the overlays instead of the
 Simulator's black, to check that the glass stays legible over a light
-picture.
+picture. `viewer-info` opens the info sheet on a scene with every detail,
+`viewer-info-legacy` on one from an API before 1.5.0, and
+`viewer-info-full` shows the sheet's whole list.
 
 Release builds don't contain it.
 
@@ -138,6 +140,15 @@ The controls are in the toolbar at the bottom:
 - **Reset** (the target icon): back to the starting view
 - In Debug builds, the line at the top is SplatKit's frame rate and splats
   drawn
+
+**Info** (top right) opens the scene's details in a sheet: the preset, the
+splat count and the quality metrics; training and total processing time,
+and when processing started and finished; the size of each model file, the
+one on screen marked **Viewing**; and the scene's ID, with a button that
+copies it, its creation date and whether it is public. API 1.5.0 added the
+preset, the times, the sizes and the training PSNR, and 1.3.0 the holdout
+metrics. An older API doesn't send them, and the sheet leaves out what it
+doesn't have.
 
 What can go wrong, and what the app says:
 
@@ -208,6 +219,7 @@ Key sections are marked with `// MARK: - Splat3D Integration` comments:
 | `RunViews.swift` | Progress, paused, failed and complete screens |
 | `RecentScenesView.swift` | Scenes: list, thumbnails, delete |
 | `SceneViewer.swift`, `SplatWorldView.swift` | The 3D viewer |
+| `SceneInfo.swift` | The viewer's info sheet, and how scene facts are written |
 | `Theme.swift` | Splat3D's look: colors, type, cards, glass buttons and surfaces, the mark |
 | `PreviewHarness.swift` | Debug only: every state, with made-up data |
 

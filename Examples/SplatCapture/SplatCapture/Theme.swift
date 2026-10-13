@@ -20,6 +20,7 @@ import CoreText
 //   .actionStyle(_:) ──> capsule buttons: primary, secondary, destructive
 //   .actionBar { } ──> a screen's actions, pinned over the content
 //   MoreMenu ────> a screen's rarer actions, in the toolbar
+//   ToolbarSymbol, CloseButton ──> toolbar buttons: bare symbols, a sheet's close
 //   .glassSurface(in:), GlassGroup ──> readouts and controls over the camera
 //   .darkBars() ──> the viewer's navigation bar and toolbar
 //   Mark ────────> mark G·5, for large placeholders
@@ -31,6 +32,8 @@ import CoreText
 //   .glass             <──>  .bordered            secondary, destructive
 //   .bordered          <──>  .bordered            a button in a row (never glass)
 //   safeAreaBar        <──>  safeAreaInset on .bar   the action bar
+//   "info"             <──>  "info.circle"           a toolbar symbol
+//   Button(role: .close) <─> Done                    closes a sheet
 //   .glassEffect       <──>  .regularMaterial     overlays
 //   GlassEffectContainer <─> the content alone
 
@@ -612,16 +615,36 @@ struct MoreMenu<Items: View>: View {
         Menu {
             items
         } label: {
-            Label("More", systemImage: Self.symbol)
+            Label("More", systemImage: ToolbarSymbol.named("ellipsis"))
         }
     }
+}
 
-    /// On iOS 26 the toolbar draws the circle in glass.
-    private static var symbol: String {
+// MARK: - Toolbar buttons
+
+/// A toolbar button's symbol: bare on iOS 26, whose toolbar draws the circle
+/// in glass, and circled before it. "info" is "info" or "info.circle".
+enum ToolbarSymbol {
+    static func named(_ name: String) -> String {
         if #available(iOS 26, *) {
-            return "ellipsis"
+            return name
         }
-        return "ellipsis.circle"
+        return name + ".circle"
+    }
+}
+
+/// Closes a sheet, from its toolbar: the system's close button, an X in
+/// glass, on iOS 26, and Done before it.
+struct CloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        if #available(iOS 26, *) {
+            Button(role: .close, action: action)
+        } else {
+            Button("Done", action: action)
+                .fontWeight(.semibold)
+        }
     }
 }
 

@@ -555,7 +555,7 @@ struct CompleteView: View {
                 }
             }
         } actions: {
-            NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
+            NavigationLink(value: Route.viewer(scene)) {
                 Text("View in 3D")
             }
             .actionStyle(.primary)

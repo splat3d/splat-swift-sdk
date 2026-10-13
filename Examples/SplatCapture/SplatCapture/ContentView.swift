@@ -170,8 +170,20 @@ struct ARCameraView: UIViewRepresentable {
 /// Screens pushed on the main navigation stack.
 enum Route: Hashable {
     case recentScenes
-    /// `webURL` is the scene on splat-3d.com, for when the app can't show it.
-    case viewer(sceneID: String, title: String, webURL: URL?)
+    /// A complete scene, for the viewer and its info sheet.
+    case viewer(SplatScene)
+
+    // SplatScene is Equatable but not Hashable. Equal scenes share an ID,
+    // so hashing the ID keeps equal routes' hashes equal.
+    func hash(into hasher: inout Hasher) {
+        switch self {
+        case .recentScenes:
+            // No payload: every such route is equal.
+            break
+        case .viewer(let scene):
+            hasher.combine(scene.id)
+        }
+    }
 }
 
 // MARK: - ContentView
@@ -217,8 +229,8 @@ struct CaptureRoot: View {
                             switch route {
                             case .recentScenes:
                                 RecentScenesView()
-                            case .viewer(let sceneID, let title, let webURL):
-                                SceneViewerScreen(sceneID: sceneID, title: title, webURL: webURL)
+                            case .viewer(let scene):
+                                SceneViewerScreen(scene: scene)
                             }
                         }
                 }

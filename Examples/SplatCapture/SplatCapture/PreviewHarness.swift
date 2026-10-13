@@ -24,7 +24,9 @@ struct PreviewHarness: View {
     /// `-accessibility` is the same state at the largest text size (a
     /// message that scrolls starts at its middle; a list, at its top); one
     /// ending in `-bright` has a bright room behind the overlays instead of
-    /// black, the hard case for glass.
+    /// black, the hard case for glass. `viewer-info` opens the info sheet
+    /// on a scene with every detail, and `viewer-info-legacy` on one from an
+    /// API before 1.5.0; `viewer-info-full` is the sheet's whole list.
     static let states = [
         "home", "home-first-run", "home-no-lidar", "home-camera-off", "home-no-key", "home-deleted",
         "home-accessibility",
@@ -38,6 +40,8 @@ struct PreviewHarness: View {
         "scenes", "scenes-empty", "scenes-error",
         "viewer-downloading", "viewer-undrawable", "viewer-no-spz", "viewer-orbit", "viewer-look",
         "viewer-orbit-accessibility", "viewer-orbit-bright",
+        "viewer-info", "viewer-info-legacy", "viewer-info-full",
+        "viewer-info-accessibility", "viewer-info-full-accessibility",
     ]
 
     let state: String
@@ -67,13 +71,17 @@ struct PreviewHarness: View {
             NavigationStack {
                 RecentScenesView(previewing: RecentScenesModel(previewing: Self.scenesState(state)))
             }
+        case "viewer-info-full":
+            // The list alone, at full height, as the sheet's large detent
+            // shows it: a screenshot can't drag the sheet up.
+            SceneInfoSheet(scene: Self.scene, viewing: SceneViewerModel.format)
         case let state where state.hasPrefix("viewer"):
             NavigationStack {
                 SceneViewerScreen(
-                    title: Self.scene.displayTitle,
-                    webURL: Self.scene.viewerURL,
+                    scene: state == "viewer-info-legacy" ? Self.legacyScene : Self.scene,
                     previewing: Self.viewerModel(state),
-                    mode: state == "viewer-look" ? .look : .orbit
+                    mode: state == "viewer-look" ? .look : .orbit,
+                    presenting: state.hasPrefix("viewer-info") ? .info : nil
                 )
             }
         default:
@@ -88,13 +96,38 @@ struct PreviewHarness: View {
     /// Relative to now, so ages read the same on any day.
     private static let created = Date().addingTimeInterval(-3 * hour)
     private static let megabyte: Int64 = 1_000_000
+    private static let minute: TimeInterval = 60
+    private static let launched = created.addingTimeInterval(minute)
 
+    /// A Standard scene with every detail API 1.5.0 sends: 4 min 36 s of
+    /// training in a 9 min 46 s run.
     private static let scene = SplatScene(
         id: sceneID,
         title: "Desk, morning light",
         status: .complete,
         numGaussians: 1_940_000,
         viewerURL: URL(string: "https://splat-3d.com/tour/\(sceneID)"),
+        createdAt: created,
+        preset: .standard,
+        psnr: 27.62,
+        trainingTime: 276.4,
+        processingStartedAt: launched,
+        processingCompletedAt: launched.addingTimeInterval(586),
+        modelSizes: SplatScene.ModelSizes(spz: 41_200_000, sog: 28_400_000, ply: 481_100_000),
+        psnrHoldout: 24.31,
+        ssimHoldout: 0.812,
+        ssim: 0.874
+    )
+
+    /// The same scene as SDKs before the scene details decoded it, from an
+    /// API before 1.5.0: no preset, times, sizes or quality metrics.
+    private static let legacyScene = SplatScene(
+        id: sceneID,
+        title: scene.title,
+        status: .complete,
+        numGaussians: scene.numGaussians,
+        viewerURL: scene.viewerURL,
+        format: .sog,
         createdAt: created
     )
 
@@ -211,7 +244,7 @@ struct PreviewHarness: View {
             return SceneViewerModel(previewing: .downloading(received: 12 * megabyte, expected: 41 * megabyte))
         case "viewer-no-spz":
             return SceneViewerModel(previewing: .failed(ViewerFailure(SplatError.notFound(refusal(404, "not_found", "No SPZ file available for this scene.")))))
-        case "viewer-orbit", "viewer-look":
+        case "viewer-orbit", "viewer-look", "viewer-info", "viewer-info-legacy":
             // The controls, over a world with no file: the Simulator can't
             // draw one anyway.
             let file = FileManager.default.temporaryDirectory.appendingPathComponent("preview.spz")
