@@ -89,9 +89,10 @@ struct SceneViewerScreen: View {
         // the segmented control drew black labels on the dark glass.
         .environment(\.colorScheme, .dark)
         // Outside the dark override: the sheet is content, in the system's
-        // appearance.
+        // appearance. It marks SPZ as Viewing only once the scene is on
+        // screen: it also opens while downloading, failed or undrawable.
         .sheet(item: $sheet) { _ in
-            SceneInfoSheet(scene: scene, viewing: SceneViewerModel.format)
+            SceneInfoSheet(scene: scene, viewing: showsControls ? SceneViewerModel.format : nil)
         }
         .task { await model.load() }
         .onDisappear { model.close() }
