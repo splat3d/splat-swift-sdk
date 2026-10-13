@@ -65,6 +65,10 @@ final class ContractTests: XCTestCase {
         FixtureCase("failedLaunchScene", Fixture.failedLaunchScene, "getScene", 200),
         FixtureCase("sweptScene", Fixture.sweptScene, "getScene", 200),
         FixtureCase("cancelledScene", Fixture.cancelledScene, "getScene", 200),
+        // API 1.5.0's scene details (gaussian-splatting PR #450), which the
+        // pinned 1.3.0 spec doesn't declare. Empty once the spec is refreshed.
+        FixtureCase("completeSceneWithDetails", Fixture.completeSceneWithDetails, "getScene", 200, deviations: sceneDetailKeys),
+        FixtureCase("completeSceneWithNullDetails", Fixture.completeSceneWithNullDetails, "getScene", 200, deviations: sceneDetailKeys),
         FixtureCase("scenePageOne", Fixture.scenePageOne, "listScenes", 200),
         FixtureCase("scenePageTwo", Fixture.scenePageTwo, "listScenes", 200),
         FixtureCase("updatedScene", Fixture.updatedScene, "updateScene", 200),
@@ -122,6 +126,18 @@ final class ContractTests: XCTestCase {
             "undeclared error.name",
         ]),
         FixtureCase("unknownFormat", Fixture.unknownFormat, "downloadScene", 400),
+    ]
+
+    /// The scene keys API 1.5.0 adds, as the 1.3.0 spec reads them.
+    static let sceneDetailKeys: Set<String> = [
+        "undeclared data.preset",
+        "undeclared data.psnr",
+        "undeclared data.training_time_seconds",
+        "undeclared data.spz_size_bytes",
+        "undeclared data.sog_size_bytes",
+        "undeclared data.ply_size_bytes",
+        "undeclared data.processing_started_at",
+        "undeclared data.processing_completed_at",
     ]
 
     /// Statuses the fixtures use that the spec does not document for that

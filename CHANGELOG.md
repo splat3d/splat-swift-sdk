@@ -176,6 +176,14 @@ All notable changes to Splat3D. Versions follow [Semantic Versioning](https://se
 - `SplatScanner.session` and `totalFrameCount` for live preview UIs.
 - `SplatScene` decodes `processingError`, `viewerURL`, `downloadURL` and
   `format` from the API, and unknown statuses decode instead of failing.
+- `SplatScene` decodes the scene details API 1.5.0 adds: `preset`,
+  `psnr`, `trainingTime` (seconds of GPU training), `processingStartedAt`,
+  `processingCompletedAt` and `modelSizes` (bytes of the SPZ, SOG and PLY
+  files). Older APIs don't send them, so they read `nil`. `preset` is a
+  `SplatScene.Preset`, an open set like `SceneStatus` that has `.custom`,
+  which `ScenePreset` lacks because retrain refuses it. The memberwise
+  initializer takes the details as trailing parameters with defaults, so
+  existing calls compile.
 - The SplatCapture example app, and macOS CI for the package and the example.
 - The example views scenes in 3D with [SplatKit](https://github.com/Xget7/splatkit-ios)
   (MIT): a Recent Scenes list, **View in 3D** after a capture, and a preset

@@ -140,6 +140,24 @@ For page-level control, pass each page's `nextCursor` back until it is `nil`. Tr
 | `.quality` | 1600px | 15K | ~25 min |
 | `.ultra` | full-res | 30K | ~45 min |
 
+### Scene details
+
+From API 1.5.0 on, a scene reports its preset, how long training took, when processing ran, and the size of each model file. Older APIs don't send them, so they read `nil`.
+
+```swift
+if let preset = scene.preset {
+    print("Preset: \(preset)")
+}
+if let seconds = scene.trainingTime {
+    print("Trained in \(Int(seconds)) s")
+}
+if let bytes = scene.modelSizes.spz {
+    print("SPZ: \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))")
+}
+```
+
+`trainingTime` is the GPU training stage alone; the whole job runs from `processingStartedAt` to `processingCompletedAt`. `scene.preset` is a `SplatScene.Preset`, which has `.custom`. Create and retrain take a `ScenePreset`, which doesn't.
+
 ### Retries, Timeouts, and Resuming
 
 Reads and `processScene` retry network failures, 5xx responses and rate limits up to three times with exponential backoff and jitter, waiting out a `Retry-After` of up to 60 seconds. A used-up monthly quota (`quota_exceeded`) and a launch the API failed for good (`upstream_error`) are not retried. Creating, retraining, updating, deleting and cancelling are never retried, because the API cannot deduplicate them yet.

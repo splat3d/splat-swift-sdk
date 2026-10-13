@@ -225,6 +225,79 @@ enum Fixture {
         .replacingOccurrences(of: "\"status\": \"uploading\"", with: "\"status\": \"cancelled\"")
         .replacingOccurrences(of: "\"processing_error\": null", with: "\"processing_error\": \"Cancelled by user\"")
 
+    // MARK: - Scene details (API 1.5.0)
+    //
+    // gaussian-splatting PR #450 (S3D-534) adds preset, psnr,
+    // training_time_seconds, the processing stamps and each model file's
+    // size to every scene answer (toPublicScene in api/src/lib/scenes.ts).
+    // The pinned spec predates it, so ContractTests lists these keys as
+    // undeclared until the spec is refreshed.
+
+    /// GET /v1/scenes/{id} → 200 for a complete scene from API 1.5.0: every
+    /// detail set. The values are the examples of PR #450's sceneSchema
+    /// (api/src/routes/schemas.ts), the stamps moved to this scene's day.
+    /// `format` is `spz` because the scene has one (API 1.4.0, defaultFormat).
+    static let completeSceneWithDetails = """
+    {
+        "data": {
+            "id": "a1b2c3d4e5f6",
+            "title": "My living room",
+            "description": null,
+            "address": "123 Main St",
+            "status": "complete",
+            "training_model": "gsplat",
+            "preset": "standard",
+            "is_public": false,
+            "thumbnail_r2_key": "tours/a1b2c3d4e5f6/thumbnail.png",
+            "thumbnail_url": "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/thumbnail",
+            "num_gaussians": 1940000,
+            "ssim": 0.82,
+            "psnr": 26.1,
+            "psnr_holdout": 24.28,
+            "ssim_holdout": 0.79,
+            "training_time_seconds": 233.7,
+            "spz_size_bytes": 21000000,
+            "sog_size_bytes": 48000000,
+            "ply_size_bytes": 460000000,
+            "processing_stage": null,
+            "processing_pct": null,
+            "processing_started_at": "\(processingStartedAt)",
+            "processing_completed_at": "\(processingCompletedAt)",
+            "processing_error": null,
+            "viewer_url": "https://splat-3d.com/tour/a1b2c3d4e5f6",
+            "download_url": "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/download",
+            "format": "spz",
+            "lod_meta_url": null,
+            "created_at": "\(createdAt)",
+            "updated_at": "\(updatedAt)"
+        },
+        "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+    }
+    """
+
+    /// ``completeSceneWithDetails``'s stamps: launched, then recorded complete.
+    static let processingStartedAt = "2026-09-28T12:01:00.000Z"
+    static let processingCompletedAt = "2026-09-28T12:10:46.000Z"
+
+    /// GET /v1/scenes/{id} → 200 from API 1.5.0 for a complete scene that
+    /// stored none of the details, with no preset in its params: every
+    /// detail key present and null (PR #450's "complete legacy row" case).
+    static let completeSceneWithNullDetails = completeSceneWithDetails
+        .replacingOccurrences(of: "\"preset\": \"standard\"", with: "\"preset\": null")
+        .replacingOccurrences(of: "\"psnr\": 26.1", with: "\"psnr\": null")
+        .replacingOccurrences(of: "\"training_time_seconds\": 233.7", with: "\"training_time_seconds\": null")
+        .replacingOccurrences(of: "\"spz_size_bytes\": 21000000", with: "\"spz_size_bytes\": null")
+        .replacingOccurrences(of: "\"sog_size_bytes\": 48000000", with: "\"sog_size_bytes\": null")
+        .replacingOccurrences(of: "\"ply_size_bytes\": 460000000", with: "\"ply_size_bytes\": null")
+        .replacingOccurrences(of: "\"processing_started_at\": \"\(processingStartedAt)\"", with: "\"processing_started_at\": null")
+        .replacingOccurrences(of: "\"processing_completed_at\": \"\(processingCompletedAt)\"", with: "\"processing_completed_at\": null")
+
+    /// ``completeSceneWithDetails`` naming `preset`, e.g. a preset the API
+    /// adds after this SDK.
+    static func completeScene(preset: String) -> String {
+        completeSceneWithDetails.replacingOccurrences(of: "\"preset\": \"standard\"", with: "\"preset\": \"\(preset)\"")
+    }
+
     /// GET /v1/scenes?limit=2 → 200, first of two pages. Items have the shape
     /// GET answers (toPublicScene); meta: the list route in
     /// api/src/routes/scenes.ts and listScenes in api/src/lib/scenes.ts, whose
