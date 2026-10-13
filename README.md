@@ -93,7 +93,7 @@ The [SplatCapture](Examples/SplatCapture) example app draws the file with [Splat
 
 To draw a scene in your own app, hand the downloaded file to SplatKit's `SplatMetalView`, as [SceneViewer.swift](Examples/SplatCapture/SplatCapture/SceneViewer.swift) and [SplatWorldView.swift](Examples/SplatCapture/SplatCapture/SplatWorldView.swift) do.
 
-SplatKit assumes the World Labs layout, +Y down, and rotates every SPZ 180 degrees about the X axis. The Splat3D pipeline makes scenes +Y up, so they show upside down. The example turns the picture back with its Flip switch, which starts on and rotates the view 180 degrees on screen, and an app of your own needs the same half turn. The pipeline doesn't get every scene upright yet. Older ARKit scenes can be turned about 90 degrees, and Flip can't correct that. At least one video uploaded without ARKit poses still shows upside down with Flip on.
+SplatKit assumes the World Labs layout, +Y down, and rotates every SPZ 180 degrees about the X axis. The Splat3D pipeline makes scenes +Y up, so they show upside down. The example turns the picture back itself, rotating the view 180 degrees on screen, and an app of your own needs the same half turn. The pipeline doesn't get every scene upright yet. Older ARKit scenes can be turned about 90 degrees, and the example's Flip button can't correct that. At least one video uploaded without ARKit poses still shows upside down until Flip turns it over.
 
 ## API Reference
 

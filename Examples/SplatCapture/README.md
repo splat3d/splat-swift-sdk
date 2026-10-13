@@ -69,10 +69,11 @@ the scene and says it can't draw it.
    without uploading it
 6. The app saves the capture, uploads the video and ARKit poses, launches
    processing and follows it step by step: upload (with bytes sent), launch,
-   process (the API's stage and percent), and the scene's thumbnail as soon as
-   the pipeline makes one
-7. When done, tap **View in 3D** to explore it in the app, **Open on
-   splat-3d.com** for the web viewer, or **Delete scene**
+   process (the stage in words, and the percent), and the scene's thumbnail
+   as soon as the pipeline makes one
+7. When done, tap **View in 3D** to explore it in the app. **Open on
+   splat-3d.com** (the web viewer) and **Delete scene** are in the **More**
+   menu (…) at the top right
 
 **Scenes** (top right) lists the account's latest scenes with their status.
 A complete one opens in 3D. Swipe or long-press a row to delete it.
@@ -94,7 +95,7 @@ raw error:
 | Monthly limit reached | The API's message | **Open billing** to change the plan, or **Resume** next month |
 | Job failed or cancelled on the server | **Processing failed** (refunded) or **Scene cancelled** | **Process again** (a new, charged scene) or discard |
 | The API can't use the upload (`source_unusable`) | **The server can't use this capture**, nothing charged | **New capture**, which also deletes the scene |
-| Unknown status | The step reads **Working**, with the raw status beside it | Keeps waiting |
+| Unknown status | The step reads **Working** | Keeps waiting |
 | No LiDAR, camera off, no key | Said on the start screen, with **Open Settings** for the camera | Scenes still work |
 
 So that a killed app can resume, `CaptureStore.swift` keeps the capture in
@@ -116,7 +117,10 @@ xcrun simctl launch booted com.splat3d.SplatCapture -SplatPreviewState paused-cr
 ```
 
 A state ending in `-accessibility`, such as `home-accessibility`, shows it at
-the largest Dynamic Type size, scrolled to the middle.
+the largest Dynamic Type size. `scanning-bright` and
+`viewer-orbit-bright` put a bright room behind the overlays instead of the
+Simulator's black, to check that the glass stays legible over a light
+picture.
 
 Release builds don't contain it.
 
@@ -125,9 +129,12 @@ Release builds don't contain it.
 The viewer downloads the scene's SPZ, the compressed format SplatKit reads,
 showing the bytes as they arrive, then hands the file to SplatKit.
 
+The controls are in the toolbar at the bottom:
+
 - **Orbit** (default): drag to circle the scene, pinch to move in or out
 - **Look**: drag to turn on the spot; hold the arrows to move forward or back
-- **Flip**: turns the picture upside down, see below
+- **Flip**: turns the picture upside down, for a scene that comes out that
+  way, see below
 - **Reset** (the target icon): back to the starting view
 - In Debug builds, the line at the top is SplatKit's frame rate and splats
   drawn
@@ -154,14 +161,14 @@ SplatKit has no orientation setting: it reads every SPZ as World Labs files
 are laid out, +Y down, and turns it half a turn about X. Splat3D's pipeline
 turns scenes so +Y is up, the convention of PlayCanvas, three.js and
 SuperSplat, and writes the SPZ with those coordinates as they are. Those would
-come out upside down, so the viewer starts with **Flip** on, which rotates the
-picture half a turn on screen. Touches turn with it, so dragging still follows
-the picture. Turn **Flip** off to see SplatKit's own orientation.
+come out upside down, so the viewer rotates SplatKit's picture half a turn on
+screen. Touches turn with it, so dragging still follows the picture. **Flip**
+turns it half a turn again, which shows SplatKit's own orientation.
 
 The pipeline doesn't get every scene upright yet. ARKit scenes processed before
 it took up from ARKit's gravity direction can be about 90° off, which **Flip**
 can't correct. At least one video uploaded without ARKit poses still shows
-upside down with **Flip** on.
+upside down until you tap **Flip**.
 
 ## How It Works
 
@@ -206,16 +213,19 @@ Key sections are marked with `// MARK: - Splat3D Integration` comments:
 
 ## Design
 
-On iOS 26 the app uses Liquid Glass where Apple puts it: on the controls
-that float over content. Buttons are glass capsules (the primary one filled
-with Splat3D's blue accent, Rinse; destructive ones in red), and the
-overlays on the camera and the 3D viewer are glass that blends where
-neighbours meet. Content sits in rounded cards on the grouped background, as
-in Settings, and a status is a colored dot with text. The navigation bar,
-the segmented preset control, the Scenes list and the confirmation dialogs
-are the system's own. On iOS 17 to 25 the same screens use bordered capsule
-buttons and material overlays. The app follows the system's light or dark
-appearance and Dynamic Type.
+On iOS 26 the app uses Liquid Glass where Apple puts it: on the layer that
+floats over content. A screen's actions are pinned at its foot, over the
+content, which scrolls under them with the scroll edge effect: the primary
+action is a glass capsule filled with Splat3D's blue accent, Rinse, and the
+others are glass with a plain label, or red for a destructive one. Rarer
+actions, such as opening the web viewer or deleting, are in the toolbar's
+**More** menu. The overlays on the camera, and the viewer's toolbar, are
+glass too. Content is an inset grouped list, as in Settings, so margins and
+corners are the system's; a button inside it is a bordered capsule, never
+glass. A status is a colored dot with text. On iOS 17 to 25 the same screens
+use bordered capsule buttons on a bar at the foot, and material overlays.
+The app follows the system's light or dark appearance, Increase Contrast
+and Dynamic Type.
 
 Headlines are set in Hanken Grotesk, and scene IDs, numbers and sizes in
 Martian Mono at 87.5% width; both are bundled in `Fonts/`. Everything else is
