@@ -10,7 +10,8 @@ twice.
 
 ## Setup
 
-1. Open `SplatCapture.xcodeproj` in Xcode
+1. Open `SplatCapture.xcodeproj` in Xcode 26 or later. The app uses iOS 26's
+   Liquid Glass, which only the iOS 26 SDK compiles; it still runs on iOS 17
 2. The project references the Splat3D SDK as a local SPM package (two
    directories up), and SplatKit `0.1.0-beta.1` from GitHub, which downloads a
    prebuilt XCFramework. Xcode resolves both automatically; the first build
