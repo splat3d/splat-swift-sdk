@@ -439,7 +439,6 @@ struct ScanningView: View {
 
     /// Space between glass surfaces; closer ones blend on iOS 26.
     private static let glassSpacing: CGFloat = 12
-    private static let readoutCorner: CGFloat = 20
     private static let recordingDot: CGFloat = 10
 
     var body: some View {
@@ -477,9 +476,10 @@ struct ScanningView: View {
                             counter("Poses", model.poseCount)
                             counter("Frames", model.frameCount)
                         }
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .glassSurface(in: RoundedRectangle(cornerRadius: Self.readoutCorner, style: .continuous))
+                        // A capsule, as the timer beside it.
+                        .glassSurface(in: Capsule())
                     }
                 }
 
@@ -487,21 +487,14 @@ struct ScanningView: View {
 
                 GlassGroup(spacing: Self.glassSpacing) {
                     VStack(spacing: Self.glassSpacing) {
-                        // Side by side; stacked when the text is too large.
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) {
-                                readouts
-                            }
-                            VStack(spacing: 8) {
-                                readouts
-                            }
-                        }
+                        readout
 
-                        // Side by side; stacked when the text is too large.
+                        // Side by side, the same width; stacked when the
+                        // text is too large. Style, not size, marks Stop
+                        // and upload as the one to take.
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: Self.glassSpacing) {
                                 cancelButton
-                                    .fixedSize()
                                 stopButton
                             }
                             VStack(spacing: Self.glassSpacing) {
@@ -525,22 +518,21 @@ struct ScanningView: View {
         }
     }
 
-    /// ARKit's tracking and the preset, above the buttons.
-    @ViewBuilder
-    private var readouts: some View {
-        if let tracking = model.tracking {
-            StatusLabel(state: tracking.dot, text: tracking.text)
-                .font(.subheadline)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .glassSurface(in: Capsule())
+    /// ARKit's tracking and the preset in one line, "● Tracking well · Fast",
+    /// smaller than the buttons under it: something to read, not to tap.
+    private var readout: some View {
+        Group {
+            if let tracking = model.tracking {
+                StatusLabel(state: tracking.dot, text: "\(tracking.text) · \(preset.title)")
+            } else {
+                Text("\(preset.title) preset")
+            }
         }
-        Text("\(preset.title) preset")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .glassSurface(in: Capsule())
+        .font(.footnote)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .glassSurface(in: Capsule())
+        .accessibilityElement(children: .combine)
     }
 
     private var stopButton: some View {
@@ -557,7 +549,7 @@ struct ScanningView: View {
         Button("Cancel") {
             confirmingCancel = true
         }
-        .actionStyle(.secondary, width: .fitted)
+        .actionStyle(.secondary)
         .disabled(isStopping)
     }
 
