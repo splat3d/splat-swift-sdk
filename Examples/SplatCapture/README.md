@@ -142,14 +142,14 @@ The controls are in the toolbar at the bottom:
 - In Debug builds, the line at the top is SplatKit's frame rate and splats
   drawn
 
-**Info** (top right) opens the scene's details in a sheet: the preset, the
-splat count and the quality metrics; training and total processing time,
-and when processing started and finished; the size of each model file, the
+**Info** (top right) opens the scene's details in a sheet. First, as on
+the Ready screen: the preset, training and total processing time, and the
+splat count. Then the quality metrics; the size of each model file, the
 one on screen marked **Viewing**; and the scene's ID, with a button that
-copies it, its creation date and whether it is public. API 1.5.0 added the
-preset, the times, the sizes and the training PSNR, and 1.3.0 the holdout
-metrics. An older API doesn't send them, and the sheet leaves out what it
-doesn't have.
+copies it, when it was created and finished processing, and whether it is
+public. API 1.5.0 added the preset, the times, the sizes and the training
+PSNR, and 1.3.0 the holdout metrics. An older API doesn't send them, and
+the sheet leaves out what it doesn't have.
 
 What can go wrong, and what the app says:
 

@@ -6,10 +6,10 @@ import Splat3D
 //
 // A SplatScene carries what the API knows about how the scene was made:
 //
-//   preset, numGaussians, psnrHoldout, ssimHoldout, psnr ──> Quality
-//   trainingTime, processingStartedAt/CompletedAt ─────────> Time
-//   modelSizes (spz, sog, ply) ────────────────────────────> Files
-//   id, createdAt, isPublic ───────────────────────────────> Scene
+//   preset, trainingTime, processing stamps, numGaussians ──> first, no header
+//   psnrHoldout, ssimHoldout, psnr ─────────────────────────> Quality
+//   modelSizes (spz, sog, ply) ─────────────────────────────> Files
+//   id, createdAt, processingCompletedAt, isPublic ─────────> Scene
 //
 // The preset, times, sizes and training PSNR come from API 1.5.0 on, the
 // holdout metrics from 1.3.0. An older API doesn't send them, so they read
@@ -107,8 +107,8 @@ struct SceneInfoSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                summary
                 quality
-                time
                 files
                 about
             }
@@ -129,15 +129,28 @@ struct SceneInfoSheet: View {
         .presentationBackground(Palette.ground)
     }
 
-    // MARK: Quality
+    // MARK: Summary
 
+    /// The Ready screen's facts, plus total processing, with no header:
+    /// at the medium detent the sheet opens at, this is what fits.
     @ViewBuilder
-    private var quality: some View {
-        if scene.preset != nil || scene.numGaussians != nil || scene.hasMetrics {
+    private var summary: some View {
+        let total = scene.processingDuration
+        if scene.preset != nil || scene.trainingTime != nil || total != nil || scene.numGaussians != nil {
             Section {
                 if let preset = scene.presetName {
                     FactRow(label: "Preset") {
                         Text(preset)
+                    }
+                }
+                if let training = scene.trainingTime {
+                    FactRow(label: "Training") {
+                        Text(FactFormat.duration(training))
+                    }
+                }
+                if let total {
+                    FactRow(label: "Total processing") {
+                        Text(FactFormat.duration(total))
                     }
                 }
                 if let count = scene.numGaussians {
@@ -146,6 +159,16 @@ struct SceneInfoSheet: View {
                             .typeStyle(.data)
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: Quality
+
+    @ViewBuilder
+    private var quality: some View {
+        if scene.hasMetrics {
+            Section {
                 if let psnr = scene.psnrHoldout {
                     FactRow(label: "Holdout PSNR") {
                         Text(FactFormat.psnr(psnr))
@@ -167,9 +190,7 @@ struct SceneInfoSheet: View {
             } header: {
                 Text("Quality")
             } footer: {
-                if scene.hasMetrics {
-                    Text(metricsNote)
-                }
+                Text(metricsNote)
             }
         }
     }
@@ -186,37 +207,6 @@ struct SceneInfoSheet: View {
             sentences.append("Holdout uses photos the model never trained on, so it's the fairer number.")
         }
         return sentences.joined(separator: " ")
-    }
-
-    // MARK: Time
-
-    @ViewBuilder
-    private var time: some View {
-        let total = scene.processingDuration
-        if scene.trainingTime != nil || total != nil || scene.processingStartedAt != nil || scene.processingCompletedAt != nil {
-            Section("Time") {
-                if let training = scene.trainingTime {
-                    FactRow(label: "Training") {
-                        Text(FactFormat.duration(training))
-                    }
-                }
-                if let total {
-                    FactRow(label: "Total processing") {
-                        Text(FactFormat.duration(total))
-                    }
-                }
-                if let started = scene.processingStartedAt {
-                    FactRow(label: "Started") {
-                        Text(FactFormat.dateTime(started))
-                    }
-                }
-                if let finished = scene.processingCompletedAt {
-                    FactRow(label: "Finished") {
-                        Text(FactFormat.dateTime(finished))
-                    }
-                }
-            }
-        }
     }
 
     // MARK: Files
@@ -266,6 +256,13 @@ struct SceneInfoSheet: View {
             }
             FactRow(label: "Created") {
                 Text(FactFormat.dateTime(scene.createdAt))
+            }
+            // No start: after a retrain it can be an earlier run's, which
+            // processingDuration's 6 h guard keeps out of Total processing.
+            if let finished = scene.processingCompletedAt {
+                FactRow(label: "Finished") {
+                    Text(FactFormat.dateTime(finished))
+                }
             }
             FactRow(label: "Visibility") {
                 Text(scene.isPublic ? "Public" : "Private")

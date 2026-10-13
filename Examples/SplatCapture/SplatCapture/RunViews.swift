@@ -545,21 +545,22 @@ struct CompleteView: View {
                     .listRowInsets(EdgeInsets())
             }
 
+            // In the order the info sheet opens with.
             Section {
                 if let preset = scene.presetName {
                     FactRow(label: "Preset") {
                         Text(preset)
                     }
                 }
-                FactRow(label: "Splats") {
-                    Text(scene.numGaussians.map(FactFormat.splats) ?? "—")
-                        .typeStyle(.data)
-                }
                 // API 1.5.0 on; older APIs send no training time.
                 if let training = scene.trainingTime {
                     FactRow(label: "Training") {
                         Text(FactFormat.duration(training))
                     }
+                }
+                FactRow(label: "Splats") {
+                    Text(scene.numGaussians.map(FactFormat.splats) ?? "—")
+                        .typeStyle(.data)
                 }
                 FactRow(label: "Created") {
                     Text(scene.createdAt.formatted(date: .abbreviated, time: .shortened))
