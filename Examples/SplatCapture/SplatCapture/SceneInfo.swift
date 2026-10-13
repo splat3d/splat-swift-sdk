@@ -249,7 +249,8 @@ struct SceneInfoSheet: View {
     private var about: some View {
         Section("Scene") {
             FactRow(label: "ID") {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                // No spacing: the copy button's target makes the gap.
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text(scene.id)
                         .typeStyle(.data)
                         .textSelection(.enabled)
@@ -285,6 +286,8 @@ private struct CopyButton: View {
     @State private var showsCheck = false
 
     private static let confirmation: Duration = .seconds(2)
+    /// The least tap target Apple's guidelines allow, in points.
+    private static let minimumTarget: CGFloat = 44
 
     var body: some View {
         Button {
@@ -294,6 +297,10 @@ private struct CopyButton: View {
             Label(showsCheck ? "Copied" : label, systemImage: showsCheck ? "checkmark" : "doc.on.doc")
                 .labelStyle(.iconOnly)
                 .foregroundStyle(Palette.accent)
+                // The symbol alone is about 17 by 20 pt. Flush right, as
+                // the other rows' values are.
+                .frame(minWidth: Self.minimumTarget, minHeight: Self.minimumTarget, alignment: .trailing)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .sensoryFeedback(.success, trigger: copies)
