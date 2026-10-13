@@ -2,107 +2,210 @@ import SwiftUI
 import UIKit
 import Splat3D
 
-// MARK: - Splat3D Integration: Recent Scenes
+// MARK: - Splat3D Integration: Scenes
 //
-// SplatClient.listScenePage lists the account's scenes, newest first. Only a
-// complete scene has a model to download, so the list keeps those, each one
-// tap from SplatKit's viewer. Each row's thumbnail comes from
+// SplatClient.listScenePage lists the account's scenes, newest first, each
+// with its status. A complete scene opens in SplatKit's viewer; any scene can
+// be deleted with SplatClient.deleteScene. Each row's thumbnail comes from
 // SplatClient.getSceneThumbnail, which sends the API key.
 
-/// The account's latest completed scenes, to view in 3D without capturing.
+/// The account's latest scenes: view, open on the web, delete.
 struct RecentScenesView: View {
 
-    @StateObject private var model = RecentScenesModel()
+    @StateObject private var model: RecentScenesModel
+    @State private var pendingDelete: SplatScene?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init() {
+        _model = StateObject(wrappedValue: RecentScenesModel())
+    }
+
+    #if DEBUG
+    init(previewing model: RecentScenesModel) {
+        _model = StateObject(wrappedValue: model)
+    }
+    #endif
 
     var body: some View {
         content
-            .navigationTitle("Recent Scenes")
+            .navigationTitle("Scenes")
+            .navigationBarTitleDisplayMode(.inline)
             .task { await model.load() }
             .refreshable { await model.load() }
+            .confirmationDialog(
+                "Delete \(pendingDelete?.displayTitle ?? "this scene")?",
+                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                titleVisibility: .visible,
+                presenting: pendingDelete
+            ) { scene in
+                Button("Delete scene", role: .destructive) {
+                    Task { await model.delete(scene) }
+                }
+            } message: { _ in
+                Text("Its model, video and thumbnail are deleted for good.")
+            }
     }
 
     @ViewBuilder
     private var content: some View {
         switch model.state {
         case .loading:
-            ProgressView("Loading scenes…")
+            ProgressView("Loading scenes")
+                .tint(Palette.accent)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Palette.ground)
 
         case .failed(let message):
-            ContentUnavailableView {
-                Label("Couldn't load scenes", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("Try Again") {
-                    Task { await model.load() }
+            centered {
+                ContentUnavailableView {
+                    Label("Couldn't load scenes", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try again") {
+                        Task { await model.load() }
+                    }
+                    .actionStyle(.secondary, width: .fitted)
                 }
             }
 
         case .loaded(let scenes) where scenes.isEmpty:
-            ContentUnavailableView {
-                Label("No completed scenes", systemImage: "cube.transparent")
-            } description: {
-                Text("Capture one, or process one at splat-3d.com.")
-            } actions: {
-                Button("Refresh") {
-                    Task { await model.load() }
-                }
+            centered {
+                ContentUnavailableView(
+                    "No scenes yet",
+                    systemImage: "square.stack.3d.up",
+                    description: Text("Capture one, or create one at splat-3d.com, and it shows here.")
+                )
             }
 
         case .loaded(let scenes):
-            List(scenes) { scene in
-                NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle)) {
+            List {
+                if let deleteError = model.deleteError {
+                    NoticeCard(tone: .alarm, title: "Couldn't delete", detail: deleteError)
+                }
+
+                Section {
+                    ForEach(scenes) { scene in
+                        row(scene)
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+        }
+    }
+
+    /// A message centred on the ground, which scrolls when it doesn't fit,
+    /// as at the largest text sizes.
+    private func centered<Message: View>(@ViewBuilder _ message: () -> Message) -> some View {
+        let message = message()
+        return ViewThatFits(in: .vertical) {
+            message
+            ScrollView {
+                message
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.ground)
+    }
+
+    /// Only a complete scene has a model to open, so only its row is a link.
+    @ViewBuilder
+    private func row(_ scene: SplatScene) -> some View {
+        Group {
+            if scene.isComplete {
+                NavigationLink(value: Route.viewer(scene)) {
                     SceneRow(scene: scene, thumbnails: model.thumbnails)
                 }
+            } else {
+                SceneRow(scene: scene, thumbnails: model.thumbnails)
+            }
+        }
+        .swipeActions {
+            Button("Delete", role: .destructive) {
+                pendingDelete = scene
+            }
+        }
+        .contextMenu {
+            if scene.isComplete, let viewerURL = scene.viewerURL {
+                Link(destination: viewerURL) {
+                    Label("Open on splat-3d.com", systemImage: "safari")
+                }
+            }
+            Button(role: .destructive) {
+                pendingDelete = scene
+            } label: {
+                Label("Delete scene", systemImage: "trash")
             }
         }
     }
 }
 
-/// One scene: thumbnail, title, age and size, and where the tap goes.
+/// One scene: thumbnail, then its title, status, and ID, age and size.
 private struct SceneRow: View {
     let scene: SplatScene
     let thumbnails: ThumbnailStore
 
     private static let thumbnailSize: CGFloat = 56
+    private static let thumbnailCorner: CGFloat = 12
+    private static let idPrefix = 8
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
+        // At accessibility sizes the thumbnail goes above the text, which
+        // takes the row's width, whole: beside it, words broke mid-word.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             SceneThumbnail(scene: scene, store: thumbnails)
                 .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: Self.thumbnailCorner, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(scene.displayTitle)
                     .font(.headline)
-                    .lineLimit(1)
-                Text(details)
-                    .font(.caption)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                StatusLabel(state: scene.status.dot(percent: scene.processingPct), text: statusText)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                details
+                    .foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
             }
-
-            Spacer()
-
-            Text("View in 3D")
-                .font(.subheadline)
-                .foregroundStyle(.tint)
         }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(scene.isComplete ? "Opens the scene in 3D" : "")
     }
 
-    /// "2 days ago · 1.9M splats".
-    private var details: String {
-        let age = scene.createdAt.formatted(.relative(presentation: .named))
-        guard let count = scene.numGaussians else {
-            return age
+    /// "Ready · Standard": the status, then the preset when the API names
+    /// one. At accessibility sizes the status alone, which fills its line.
+    private var statusText: String {
+        guard let preset = scene.presetName, !dynamicTypeSize.isAccessibilitySize else {
+            return scene.status.shortName
         }
-        return "\(age) · \(count.formatted(.number.notation(.compactName))) splats"
+        return "\(scene.status.shortName) · \(preset)"
+    }
+
+    /// "a1b2c3d4 · 2 days ago · 1.94M splats": the ID in mono, the age and
+    /// size in words, in the system font. The count as Ready and the info
+    /// sheet write it.
+    private var details: Text {
+        var words = [scene.createdAt.formatted(.relative(presentation: .named))]
+        if let count = scene.numGaussians {
+            words.append("\(FactFormat.splats(count)) splats")
+        }
+        let id = TypeStyle.smallData.text(String(scene.id.prefix(Self.idPrefix)), at: dynamicTypeSize)
+        let rest = Text(" · " + words.joined(separator: " · ")).font(.caption)
+        return Text("\(id)\(rest)")
     }
 }
 
 // MARK: - SceneThumbnail
 
-/// A scene's thumbnail, loaded with the API key. The grey placeholder shows
-/// while it loads, and stays when the scene has none or the load fails.
+/// A scene's thumbnail, loaded with the API key. A placeholder shows while it
+/// loads, and stays when the scene has none or the load fails.
 private struct SceneThumbnail: View {
     let scene: SplatScene
     let store: ThumbnailStore
@@ -118,7 +221,7 @@ private struct SceneThumbnail: View {
     }
 
     var body: some View {
-        Color.secondary.opacity(0.2)
+        ThumbnailPlaceholder(style: .symbol)
             .overlay {
                 if let image {
                     Image(uiImage: image)
@@ -134,6 +237,47 @@ private struct SceneThumbnail: View {
     }
 }
 
+/// A plain fill with a faint emblem, where a thumbnail will go.
+struct ThumbnailPlaceholder: View {
+
+    enum Style {
+        /// Mark G·5, which reads only large: the complete screen's picture.
+        case mark
+        /// A neutral symbol, for a list row's small square.
+        case symbol
+    }
+
+    let style: Style
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// The mark screens its channels on dark grounds, which dims it: it
+    /// needs more opacity there to read as faint as on light.
+    private static let markOpacity = (light: 0.4, dark: 0.8)
+    private static let markInset: CGFloat = 0.28
+    private static let symbolScale: CGFloat = 0.4
+
+    var body: some View {
+        GeometryReader { geometry in
+            let side = min(geometry.size.width, geometry.size.height)
+            Palette.placeholder
+                .overlay {
+                    switch style {
+                    case .mark:
+                        Mark()
+                            .padding(side * Self.markInset)
+                            .opacity(colorScheme == .dark ? Self.markOpacity.dark : Self.markOpacity.light)
+                    case .symbol:
+                        Image(systemName: "cube.transparent")
+                            .font(.system(size: side * Self.symbolScale, weight: .light))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
+                }
+        }
+    }
+}
+
 // MARK: - RecentScenesModel
 
 @MainActor
@@ -146,11 +290,15 @@ final class RecentScenesModel: ObservableObject {
     }
 
     @Published private(set) var state = State.loading
+    @Published private(set) var deleteError: String?
 
     /// The API's largest page: recent enough, in one request.
     private static let pageSize = 100
 
     private let client: SplatClient?
+    #if DEBUG
+    private var isPreview = false
+    #endif
 
     /// The rows' thumbnails, loaded through the same client, so with the same key.
     fileprivate let thumbnails: ThumbnailStore
@@ -162,20 +310,53 @@ final class RecentScenesModel: ObservableObject {
     }
 
     func load() async {
+        #if DEBUG
+        guard !isPreview else {
+            return
+        }
+        #endif
         guard let client else {
-            state = .failed(missingAPIKeyMessage)
+            state = .failed("This build has no Splat API key. \(missingAPIKeyMessage)")
             return
         }
 
         do {
             let page = try await client.listScenePage(limit: Self.pageSize)
-            state = .loaded(page.scenes.filter(\.isComplete))
+            state = .loaded(page.scenes)
         } catch is CancellationError {
             // The list went away, or a refresh replaced this load.
         } catch {
             state = .failed(error.localizedDescription)
         }
     }
+
+    /// Delete a scene and drop its row. A scene still processing is
+    /// cancelled first, by the API.
+    func delete(_ scene: SplatScene) async {
+        guard let client else {
+            return
+        }
+        deleteError = nil
+        do {
+            try await client.deleteScene(id: scene.id)
+        } catch {
+            deleteError = error.localizedDescription
+            return
+        }
+        if case .loaded(let scenes) = state {
+            state = .loaded(scenes.filter { $0.id != scene.id })
+        }
+    }
+
+    #if DEBUG
+    /// A list in a fixed state, with no client, for PreviewHarness.
+    init(previewing state: State) {
+        client = nil
+        thumbnails = ThumbnailStore(client: nil)
+        self.state = state
+        isPreview = true
+    }
+    #endif
 }
 
 // MARK: - ThumbnailStore
@@ -234,5 +415,70 @@ extension SplatScene {
             return "Untitled scene"
         }
         return title
+    }
+}
+
+// MARK: - Statuses in words
+
+extension SceneStatus {
+
+    /// A plain name for the status. The set is open: a stage this app
+    /// doesn't know shows as "Working".
+    var displayName: String {
+        switch self {
+        case .uploading:
+            return "Waiting for the video"
+        case .previewExtracting, .previewGenerating, .previewCompressing:
+            return "Making a preview"
+        case .previewReady:
+            return "Preview ready"
+        case .extractingFrames:
+            return "Extracting frames"
+        case .estimatingPoses, .runningSfm:
+            return "Placing the cameras"
+        case .training:
+            return "Training the splats"
+        case .exporting:
+            return "Exporting"
+        case .compressing:
+            return "Compressing"
+        case .processing:
+            return "Processing"
+        case .complete:
+            return "Ready"
+        case .failed:
+            return "Failed"
+        case .cancelled:
+            return "Cancelled"
+        default:
+            return "Working"
+        }
+    }
+
+    /// For the Scenes list: in progress statuses are all "Processing".
+    var shortName: String {
+        switch self {
+        case .complete, .failed, .cancelled:
+            return displayName
+        case .uploading:
+            return "Uploading"
+        default:
+            return "Processing"
+        }
+    }
+
+    private static let percent: Double = 100
+
+    func dot(percent: Double?) -> DotState {
+        switch self {
+        case .complete:
+            return .done
+        case .failed:
+            return .failed
+        case .cancelled, .uploading:
+            return .waiting
+        default:
+            return .running((percent ?? 0) / Self.percent)
+        }
     }
 }

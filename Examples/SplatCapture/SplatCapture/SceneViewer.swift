@@ -11,26 +11,57 @@ import SplatKit
 // Both modules import side by side: Splat3D was named SplatKit before 1.0 and
 // was renamed so it wouldn't clash with this renderer.
 
-/// Downloads a scene's SPZ and shows it with SplatKit.
+/// What the viewer shows over the scene.
+enum ViewerSheet: Identifiable {
+    /// The scene's details: SceneInfoSheet.
+    case info
+
+    var id: Self { self }
+}
+
+/// Downloads a scene's SPZ and shows it with SplatKit. Info, in the
+/// navigation bar, opens the scene's details.
 struct SceneViewerScreen: View {
 
-    let title: String
+    let scene: SplatScene
 
     @StateObject private var model: SceneViewerModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #if DEBUG
+    @Environment(\.previewBackdrop) private var previewBackdrop
+    #endif
     @State private var mode = NavigationMode.orbit
-    // Splat3D scenes are +Y up. SplatKit reads SPZ as +Y down (World Labs'
-    // convention) and flips it, so start with the picture turned back.
-    @State private var flipped = true
+    /// Flip, which the user turns on: off shows the scene upright.
+    @State private var userFlipped = false
     @State private var walkSpeed: Float = 0
     @State private var resetCount = 0
+    @State private var sheet: ViewerSheet?
 
     /// Scene units per second while a move arrow is held.
     private static let walkingSpeed: Float = 0.6
 
-    init(sceneID: String, title: String) {
-        self.title = title
-        _model = StateObject(wrappedValue: SceneViewerModel(sceneID: sceneID))
+    init(scene: SplatScene) {
+        self.scene = scene
+        _model = StateObject(wrappedValue: SceneViewerModel(sceneID: scene.id))
+    }
+
+    #if DEBUG
+    init(scene: SplatScene, previewing model: SceneViewerModel, mode: NavigationMode = .orbit, presenting sheet: ViewerSheet? = nil) {
+        self.scene = scene
+        _model = StateObject(wrappedValue: model)
+        _mode = State(initialValue: mode)
+        _sheet = State(initialValue: sheet)
+    }
+    #endif
+
+    private var title: String {
+        scene.displayTitle
+    }
+
+    /// The scene on splat-3d.com, offered when asking again can't help.
+    private var webURL: URL? {
+        scene.viewerURL
     }
 
     var body: some View {
@@ -40,9 +71,29 @@ struct SceneViewerScreen: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.black, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            // In every phase: the details don't need the downloaded model.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    sheet = .info
+                } label: {
+                    Label("Scene info", systemImage: ToolbarSymbol.named("info"))
+                }
+            }
+            if showsControls {
+                controls
+            }
+        }
+        .darkBars()
+        // Outside the toolbar, so its controls are dark too: in light mode
+        // the segmented control drew black labels on the dark glass.
+        .environment(\.colorScheme, .dark)
+        // Outside the dark override: the sheet is content, in the system's
+        // appearance. It marks SPZ as Viewing only once the scene is on
+        // screen: it also opens while downloading, failed or undrawable.
+        .sheet(item: $sheet) { _ in
+            SceneInfoSheet(scene: scene, viewing: showsControls ? SceneViewerModel.format : nil)
+        }
         .task { await model.load() }
         .onDisappear { model.close() }
     }
@@ -62,22 +113,60 @@ struct SceneViewerScreen: View {
                 }
 
         case .undrawable(let bytes):
-            Notice(
-                symbol: "iphone.slash",
-                title: "Downloaded, but not drawn here",
-                detail: "Got \(bytes.formatted(.byteCount(style: .file))) of SPZ, but SplatKit couldn't start Metal. "
-                    + "It needs a physical device with an A14 or M1 chip or newer (Apple GPU family 7), so the "
-                    + "Simulator never draws; on such a device, its Metal setup failed."
-            )
+            scrollingIfNeeded {
+                Notice(
+                    symbol: "iphone.slash",
+                    title: "Downloaded, but not drawn here",
+                    detail: "Got \(bytes.formatted(.byteCount(style: .file))) of SPZ, but SplatKit couldn't start Metal. "
+                        + "It needs a physical device with an A14 or M1 chip or newer (Apple GPU family 7), so the "
+                        + "Simulator never draws; on such a device, its Metal setup failed."
+                )
+            }
 
         case .failed(let failure):
-            VStack(spacing: 16) {
-                Notice(symbol: "exclamationmark.triangle", title: failure.title, detail: failure.detail)
-                Button("Try Again") {
-                    Task { await model.retry() }
+            scrollingIfNeeded {
+                VStack(spacing: 16) {
+                    Notice(symbol: "exclamationmark.triangle", title: failure.title, detail: failure.detail)
+                    failureAction(failure)
+                        .padding(.horizontal, Theme.margin)
                 }
-                .buttonStyle(.borderedProminent)
             }
+        }
+    }
+
+    /// The controls show once the scene is on screen.
+    private var showsControls: Bool {
+        guard case .showing = model.phase else {
+            return false
+        }
+        return model.worldReady
+    }
+
+    /// A message centred on screen, which scrolls when it doesn't fit, as at
+    /// the largest text sizes, where it was cut off.
+    private func scrollingIfNeeded<Message: View>(@ViewBuilder _ message: () -> Message) -> some View {
+        let message = message()
+        return ViewThatFits(in: .vertical) {
+            message
+            ScrollView {
+                message
+            }
+        }
+    }
+
+    /// Try again when it can go differently. When the server would answer
+    /// the same, the scene on splat-3d.com, whose viewer needs no SPZ. A
+    /// button on the message, so bordered, not glass.
+    @ViewBuilder
+    private func failureAction(_ failure: ViewerFailure) -> some View {
+        if failure.canRetry {
+            Button("Try again") {
+                Task { await model.retry() }
+            }
+            .actionStyle(.secondary, width: .fitted)
+        } else if let webURL {
+            Link("Open on splat-3d.com", destination: webURL)
+                .actionStyle(.secondary, width: .fitted)
         }
     }
 
@@ -85,61 +174,95 @@ struct SceneViewerScreen: View {
         SplatWorldView(
             file: file,
             mode: mode,
-            flipped: flipped,
+            // SplatKit reads SPZ as +Y down (World Labs' convention) and
+            // turns it over; Splat3D scenes are +Y up, so the view turns
+            // it back unless the user flips it.
+            flipped: !userFlipped,
             walkSpeed: walkSpeed,
             resetCount: resetCount,
             isActive: scenePhase == .active,
             onEvent: { model.handle($0) }
         )
         .ignoresSafeArea()
+        #if DEBUG
+        .overlay {
+            if previewBackdrop == .brightRoom {
+                BrightRoom()
+            }
+        }
+        #endif
         .overlay(alignment: .top) {
+            TopScrim()
+        }
+        .overlay(alignment: .top) {
+            #if DEBUG
             if let stats = model.stats {
                 StatsLine(stats: stats)
             }
+            #endif
         }
         .overlay(alignment: .bottom) {
-            if model.worldReady {
-                controls
+            if model.worldReady, mode == .look {
+                moveArrows
             }
         }
     }
 
     // MARK: Controls
 
-    private var controls: some View {
-        VStack(spacing: 12) {
-            if mode == .look {
-                HStack(spacing: 24) {
-                    holdToMove(symbol: "arrow.up", label: "Move forward", speed: Self.walkingSpeed)
-                    holdToMove(symbol: "arrow.down", label: "Move back", speed: -Self.walkingSpeed)
-                }
+    /// The mode, Flip and Reset, in the toolbar, which the system draws: in
+    /// glass on iOS 26, grouped, over the scene.
+    @ToolbarContentBuilder
+    private var controls: some ToolbarContent {
+        ToolbarItemGroup(placement: .bottomBar) {
+            modePicker
+            Spacer()
+            // Lit only once the user flips the scene.
+            Toggle(isOn: $userFlipped) {
+                Label("Flip", systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down")
             }
-
-            HStack(spacing: 12) {
-                Picker("Navigation", selection: modeSelection) {
-                    Text("Orbit").tag(NavigationMode.orbit)
-                    Text("Look").tag(NavigationMode.look)
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 160)
-
-                Toggle(isOn: $flipped) {
-                    Label("Flip", systemImage: "arrow.up.arrow.down")
-                }
-                .toggleStyle(.button)
-
-                Button {
-                    resetCount += 1
-                } label: {
-                    Label("Reset", systemImage: "scope")
-                }
-                .labelStyle(.iconOnly)
+            .toggleStyle(.button)
+            Button {
+                resetCount += 1
+            } label: {
+                Label("Reset", systemImage: "scope")
             }
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// Orbit or Look: segments, or at accessibility sizes, where segments
+    /// truncate, a menu.
+    @ViewBuilder
+    private var modePicker: some View {
+        let picker = Picker("Navigation", selection: modeSelection) {
+            ForEach(NavigationMode.allCases) { mode in
+                Text(mode.rawValue.capitalized)
+                    .tag(mode)
+            }
+        }
+        if dynamicTypeSize.isAccessibilitySize {
+            picker
+                .pickerStyle(.menu)
+                .fixedSize()
+        } else {
+            picker
+                .pickerStyle(.segmented)
+                .fixedSize()
+        }
+    }
+
+    /// The move arrows in Look mode, glass over the scene, above the toolbar.
+    private var moveArrows: some View {
+        GlassGroup(spacing: Self.arrowSpacing) {
+            HStack(spacing: Self.arrowSpacing) {
+                holdToMove(symbol: "arrow.up", label: "Move forward", speed: Self.walkingSpeed)
+                holdToMove(symbol: "arrow.down", label: "Move back", speed: -Self.walkingSpeed)
+            }
+        }
         .padding()
     }
+
+    private static let arrowSpacing: CGFloat = 24
 
     /// The mode picker's selection. A switch hides the move arrows, so one held
     /// through it never reports its release: stop walking in the same update.
@@ -157,7 +280,7 @@ struct SceneViewerScreen: View {
     private func holdToMove(symbol: String, label: String, speed: Float) -> some View {
         Button {} label: {
             Image(systemName: symbol)
-                .font(.title2.weight(.semibold))
+                .font(.title3.weight(.semibold))
         }
         .buttonStyle(HoldButtonStyle { held in
             walkSpeed = held ? speed : 0
@@ -187,6 +310,9 @@ final class SceneViewerModel: ObservableObject {
     @Published private(set) var worldReady = false
     @Published private(set) var stats: SplatStats?
 
+    /// The format load() downloads: the one SplatKit reads.
+    static let format = ModelFormat.spz
+
     private static let progressInterval: Duration = .milliseconds(250)
 
     private let sceneID: String
@@ -198,6 +324,20 @@ final class SceneViewerModel: ObservableObject {
     init(sceneID: String) {
         self.sceneID = sceneID
     }
+
+    #if DEBUG
+    /// Shows `phase` and never downloads, for PreviewHarness. With
+    /// `worldReady`, the controls show over the world, which ignores
+    /// SplatKit's events: on the Simulator it draws nothing.
+    init(previewing phase: Phase, worldReady: Bool = false) {
+        sceneID = ""
+        self.phase = phase
+        self.worldReady = worldReady
+        isPreview = true
+    }
+
+    private var isPreview = false
+    #endif
 
     /// Try Again. A file still on disk is one SplatKit refused: hand it over
     /// again, since a new download would bring the same bytes.
@@ -218,6 +358,11 @@ final class SceneViewerModel: ObservableObject {
     }
 
     func load() async {
+        #if DEBUG
+        guard !isPreview else {
+            return
+        }
+        #endif
         generation += 1
         let current = generation
         discardFile()
@@ -231,7 +376,7 @@ final class SceneViewerModel: ObservableObject {
         }
 
         // The SDK takes any URLSession; this one's delegate sees the download task.
-        let watcher = DownloadWatcher()
+        let watcher = TransferWatcher()
         let session = URLSession(configuration: .default, delegate: watcher, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         let client = SplatClient(apiKey: apiKey, session: session)
@@ -239,7 +384,7 @@ final class SceneViewerModel: ObservableObject {
         let progress = Task { [weak self] in
             while !Task.isCancelled {
                 if let bytes = watcher.bytes {
-                    self?.showProgress(received: bytes.received, expected: bytes.expected)
+                    self?.showProgress(received: bytes.received, expected: bytes.expectedToReceive)
                 }
                 try? await Task.sleep(for: SceneViewerModel.progressInterval)
             }
@@ -247,7 +392,7 @@ final class SceneViewerModel: ObservableObject {
         defer { progress.cancel() }
 
         do {
-            let downloaded = try await client.downloadScene(id: sceneID, format: .spz)
+            let downloaded = try await client.downloadScene(id: sceneID, format: Self.format)
 
             // A retry outlives its screen: once it closed, or a newer load
             // began, nothing will show this file.
@@ -257,7 +402,7 @@ final class SceneViewerModel: ObservableObject {
             }
 
             // The extension is the format the server actually sent.
-            guard downloaded.pathExtension == ModelFormat.spz.rawValue else {
+            guard downloaded.pathExtension == Self.format.rawValue else {
                 try? FileManager.default.removeItem(at: downloaded)
                 phase = .failed(.otherFormat(downloaded.pathExtension))
                 return
@@ -273,6 +418,11 @@ final class SceneViewerModel: ObservableObject {
     }
 
     func handle(_ event: WorldEvent) {
+        #if DEBUG
+        guard !isPreview else {
+            return
+        }
+        #endif
         switch event {
         case .unavailable:
             guard case .showing(_, let bytes) = phase else {
@@ -311,11 +461,21 @@ final class SceneViewerModel: ObservableObject {
     }
 }
 
-// MARK: - DownloadWatcher
+// MARK: - TransferWatcher
 
-/// Remembers the newest task the SDK starts on its session, to read its bytes.
-/// Retries start new tasks, so the newest one is the live one.
-final class DownloadWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+/// A transfer's bytes so far, and the totals when the request or response
+/// gave a length.
+struct TransferBytes {
+    let sent: Int64
+    let expectedToSend: Int64?
+    let received: Int64
+    let expectedToReceive: Int64?
+}
+
+/// Remembers the newest task the SDK starts on its session, to read its bytes:
+/// the viewer's download, and the capture's upload. Retries start new tasks,
+/// so the newest one is the live one.
+final class TransferWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
 
     private let lock = NSLock()
     private var task: URLSessionTask?
@@ -324,16 +484,19 @@ final class DownloadWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendab
         lock.withLock { self.task = task }
     }
 
-    /// Bytes received so far, and the total when the response gave a length.
-    var bytes: (received: Int64, expected: Int64?)? {
+    var bytes: TransferBytes? {
         lock.withLock {
             guard let task else {
                 return nil
             }
-            // -1 (NSURLSessionTransferSizeUnknown) until a Content-Length arrives.
-            let length = task.countOfBytesExpectedToReceive
-            let expected: Int64? = length > 0 ? length : nil
-            return (received: task.countOfBytesReceived, expected: expected)
+            // -1 (NSURLSessionTransferSizeUnknown) until a length is known.
+            let total = { (length: Int64) in length > 0 ? length : nil }
+            return TransferBytes(
+                sent: task.countOfBytesSent,
+                expectedToSend: total(task.countOfBytesExpectedToSend),
+                received: task.countOfBytesReceived,
+                expectedToReceive: total(task.countOfBytesExpectedToReceive)
+            )
         }
     }
 }
@@ -342,8 +505,22 @@ final class DownloadWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendab
 
 /// Why a scene can't be shown, worded for whoever is testing.
 struct ViewerFailure {
+
+    /// What asking again would bring.
+    enum Retry {
+        /// Maybe something else: offer Try again.
+        case mayHelp
+        /// The same answer: offer the web viewer instead.
+        case sameAnswer
+    }
+
     let title: String
     let detail: String
+    let retry: Retry
+
+    var canRetry: Bool {
+        retry == .mayHelp
+    }
 
     /// RFC 9110 §15.5.1.
     private static let badRequest = 400
@@ -354,7 +531,8 @@ struct ViewerFailure {
     static func otherFormat(_ served: String) -> ViewerFailure {
         ViewerFailure(
             title: "This scene has no SPZ",
-            detail: "The server sent \(served.isEmpty ? "another format" : served.uppercased()) instead, which SplatKit can't read."
+            detail: "The server sent \(served.isEmpty ? "another format" : served.uppercased()) instead, which SplatKit can't read.",
+            retry: .sameAnswer
         )
     }
 
@@ -363,9 +541,10 @@ struct ViewerFailure {
         ViewerFailure(title: "SplatKit couldn't load this scene", detail: message)
     }
 
-    init(title: String, detail: String) {
+    init(title: String, detail: String, retry: Retry = .mayHelp) {
         self.title = title
         self.detail = detail
+        self.retry = retry
     }
 
     init(_ error: Error) {
@@ -373,12 +552,14 @@ struct ViewerFailure {
         case SplatError.requestFailed(let apiError) where Self.rejectsFormat(apiError):
             self.init(
                 title: "SPZ download not available on this server yet",
-                detail: "The API doesn't accept format=spz yet. It said: \(apiError.message)"
+                detail: "The API doesn't accept format=spz yet. It said: \(apiError.message)",
+                retry: .sameAnswer
             )
         case SplatError.notFound(let apiError):
             self.init(
                 title: "This scene has no SPZ",
-                detail: "\(apiError.message) Scenes processed before SPZ export, or whose SPZ conversion failed, have none."
+                detail: "\(apiError.message) Scenes processed before SPZ export, or whose SPZ conversion failed, have none.",
+                retry: .sameAnswer
             )
         case SplatError.unauthorized:
             self.init(title: "API key rejected", detail: "Check SPLAT_API_KEY in Secrets.xcconfig.")
@@ -399,29 +580,71 @@ struct ViewerFailure {
 
 // MARK: - Small views
 
-/// Bytes downloaded so far, as a bar once the total is known.
+/// Bytes downloaded so far, as a bar once the total is known: the words in
+/// the system font, the sizes in mono.
 private struct DownloadProgress: View {
     let received: Int64
     let expected: Int64?
 
+    private static let barWidth: CGFloat = 240
+
     var body: some View {
         VStack(spacing: 12) {
             if let expected {
-                ProgressView(value: Double(min(received, expected)), total: Double(expected))
-                    .frame(maxWidth: 240)
-                Text("Downloading SPZ… \(Self.format(received)) of \(Self.format(expected))")
+                RunProgressBar(label: "Download", fraction: Double(min(received, expected)) / Double(expected))
+                    .frame(maxWidth: Self.barWidth)
             } else {
                 ProgressView()
-                Text(received > 0 ? "Downloading SPZ… \(Self.format(received))" : "Requesting SPZ…")
+            }
+            Text("Downloading scene")
+                .font(.subheadline)
+            if let amount {
+                Text(amount)
+                    .typeStyle(.data)
+                    .foregroundStyle(.secondary)
             }
         }
-        .font(.subheadline.monospacedDigit())
-        .foregroundStyle(.white)
-        .tint(.white)
+        .multilineTextAlignment(.center)
+        .tint(Palette.accent)
+    }
+
+    /// "12 MB of 41 MB", or "12 MB" with no total; nothing before the first
+    /// bytes.
+    private var amount: String? {
+        if let expected {
+            return "\(Self.format(received)) of \(Self.format(expected))"
+        }
+        return received > 0 ? Self.format(received) : nil
     }
 
     private static func format(_ bytes: Int64) -> String {
         bytes.formatted(.byteCount(style: .file))
+    }
+}
+
+/// Dims the top of the picture under the navigation bar, so the white title
+/// and status bar stay legible over a bright scene: on iOS 26 the bar draws
+/// no glass behind the title. Before it, the bar is solid black.
+private struct TopScrim: View {
+
+    /// From the top of the screen, past the navigation bar's title.
+    private static let height: CGFloat = 140
+    /// About 60% black behind the title: white over it measures 5.7:1 on a
+    /// white scene.
+    private static let stops: [Gradient.Stop] = [
+        .init(color: .black.opacity(0.65), location: 0),
+        .init(color: .black.opacity(0.6), location: 0.65),
+        .init(color: .clear, location: 1),
+    ]
+
+    var body: some View {
+        if #available(iOS 26, *) {
+            LinearGradient(stops: Self.stops, startPoint: .top, endPoint: .bottom)
+                .frame(height: Self.height)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }
 
@@ -436,33 +659,33 @@ private struct Notice: View {
             if let symbol {
                 Image(systemName: symbol)
                     .font(.largeTitle)
+                    .foregroundStyle(.secondary)
             } else {
                 ProgressView()
             }
             Text(title)
-                .font(.headline)
+                .typeStyle(.title)
             Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.75))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
         .multilineTextAlignment(.center)
-        .foregroundStyle(.white)
-        .tint(.white)
+        .tint(Palette.accent)
         .padding(32)
     }
 }
 
-/// Frame rate and splats drawn, as SplatKit measures them.
+#if DEBUG
+/// Frame rate and splats drawn, as SplatKit measures them. Debug builds only.
 private struct StatsLine: View {
     let stats: SplatStats
 
     var body: some View {
         Text("\(Int(stats.fps.rounded())) fps · \(Self.count(stats.drawnSplatCount)) of \(Self.count(stats.splatCount)) splats")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(.black.opacity(0.6), in: Capsule())
+            .typeStyle(.smallData)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .glassSurface(in: Capsule())
             .padding(.top, 8)
     }
 
@@ -470,16 +693,21 @@ private struct StatsLine: View {
         value.formatted(.number.notation(.compactName))
     }
 }
+#endif
 
 /// Reports presses: `onHold(true)` while held, `onHold(false)` on release.
+/// A glass circle, filled with the accent while held.
 private struct HoldButtonStyle: ButtonStyle {
     let onHold: (Bool) -> Void
 
+    private static let size: CGFloat = 56
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.white)
-            .frame(width: 56, height: 56)
-            .background(.white.opacity(configuration.isPressed ? 0.35 : 0.15), in: Circle())
+            .foregroundStyle(configuration.isPressed ? Palette.onAccent : .primary)
+            .frame(width: Self.size, height: Self.size)
+            .contentShape(Circle())
+            .glassSurface(in: Circle(), tint: configuration.isPressed ? Palette.accent : nil, interaction: .interactive)
             .onChange(of: configuration.isPressed) { _, pressed in
                 onHold(pressed)
             }

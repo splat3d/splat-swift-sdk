@@ -8,5 +8,15 @@
 	<string>SplatCapture needs motion data to track camera poses for 3D reconstruction.</string>
 	<key>SplatAPIKey</key>
 	<string>$(SPLAT_API_KEY)</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>HankenGrotesk-Variable.ttf</string>
+		<string>MartianMono-Variable.ttf</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 </dict>
 </plist>

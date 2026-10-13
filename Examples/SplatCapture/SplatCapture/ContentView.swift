@@ -9,11 +9,14 @@ import Splat3D
 //    Copy Secrets.example.xcconfig to Secrets.xcconfig (git ignores it) and set
 //    it there. Never put a key in source: this repository is public.
 // 2. The SDK entry points used in this app:
-//    - SplatScanner  — captures video + ARKit poses (see startScan/stopAndUpload)
-//    - SplatClient   — uploads and processes via the Splat API (see stopAndUpload),
-//                      lists scenes (RecentScenesView.swift) and downloads their
-//                      SPZ (SceneViewer.swift)
-//    - ARKitPose     — pose format sent to the API (handled internally by SplatScanner)
+//    - SplatScanner  — captures video + ARKit poses (CaptureModel.swift)
+//    - SplatClient   — uploads and processes via the Splat API, resumes an
+//                      interrupted run without paying twice, fetches the
+//                      thumbnail and deletes (CaptureModel.swift); lists and
+//                      deletes scenes (RecentScenesView.swift) and downloads
+//                      their SPZ (SceneViewer.swift)
+//    - ARKitPose     — pose format sent to the API (handled internally by
+//                      SplatScanner, and saved by CaptureStore.swift)
 // 3. SplatKit (github.com/Xget7/splatkit-ios, MIT) draws the downloaded scene
 //    natively: see SplatWorldView.swift.
 
@@ -27,18 +30,24 @@ let apiKey: String? = {
     return key
 }()
 
-/// Shown instead of scanning when no key is set.
+/// What to do when no key is set, under a title that says so.
 let missingAPIKeyMessage = """
-    No Splat API key. Copy Examples/SplatCapture/Secrets.example.xcconfig to \
-    Secrets.xcconfig, set SPLAT_API_KEY to your key, and build again.
+    Copy Examples/SplatCapture/Secrets.example.xcconfig to Secrets.xcconfig, \
+    set SPLAT_API_KEY to your key, and build again.
     """
 
 // MARK: - Mesh Material
 
-/// Shared material for the scanned surface overlay.
+/// Opacity of the scanned surface overlay.
+private let meshOpacity: CGFloat = 0.4
+
+/// Shared material for the scanned surface overlay, in the dark theme's
+/// accent: the camera view is always dark.
 private let meshMaterial: SCNMaterial = {
     let mat = SCNMaterial()
-    mat.diffuse.contents = UIColor(red: 1.0, green: 0.84, blue: 0.0, alpha: 0.5)
+    mat.diffuse.contents = Palette.UI.accent
+        .resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+        .withAlphaComponent(meshOpacity)
     mat.isDoubleSided = true
     mat.fillMode = .fill
     mat.lightingModel = .constant
@@ -161,429 +170,446 @@ struct ARCameraView: UIViewRepresentable {
 /// Screens pushed on the main navigation stack.
 enum Route: Hashable {
     case recentScenes
-    case viewer(sceneID: String, title: String)
+    /// A complete scene, for the viewer and its info sheet.
+    case viewer(SplatScene)
+
+    // SplatScene is Equatable but not Hashable. Equal scenes share an ID,
+    // so hashing the ID keeps equal routes' hashes equal.
+    func hash(into hasher: inout Hasher) {
+        switch self {
+        case .recentScenes:
+            // No payload: every such route is equal.
+            break
+        case .viewer(let scene):
+            hasher.combine(scene.id)
+        }
+    }
 }
 
 // MARK: - ContentView
 
 struct ContentView: View {
 
-    @StateObject private var viewModel = ScanViewModel()
+    @StateObject private var model = CaptureModel()
+    @StateObject private var connectivity = Connectivity()
+
+    var body: some View {
+        CaptureRoot(model: model, connectivity: connectivity)
+    }
+}
+
+/// The app's screens for one capture model: scanning full screen, and every
+/// other state on a navigation stack with Scenes and the viewer.
+struct CaptureRoot: View {
+
+    @ObservedObject var model: CaptureModel
+    @ObservedObject var connectivity: Connectivity
+
     // Fast by default: the quickest and cheapest preset, for trying things out.
     @AppStorage("scenePreset") private var preset = ScenePreset.fast
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        Group {
+            if case .scanning = model.state {
+                ScanningView(model: model, preset: preset)
+            } else {
+                NavigationStack {
+                    // Each screen sets its own title: large on the start
+                    // screen, inline on the rest.
+                    screen
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                NavigationLink(value: Route.recentScenes) {
+                                    Label("Scenes", systemImage: "square.stack.3d.up")
+                                }
+                            }
+                        }
+                        .navigationDestination(for: Route.self) { route in
+                            switch route {
+                            case .recentScenes:
+                                RecentScenesView()
+                            case .viewer(let scene):
+                                SceneViewerScreen(scene: scene)
+                            }
+                        }
+                }
+            }
+        }
+        // initial: a launch that finds a run the app was killed in resumes it.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            if phase == .active {
+                model.appBecameActive()
+            }
+        }
+        .onChange(of: connectivity.isOnline) { _, online in
+            if online {
+                model.networkReturned()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var screen: some View {
+        switch model.state {
+        case .idle, .scanning:
+            HomeView(model: model, preset: $preset)
+        case .running(let progress):
+            RunningView(progress: progress, thumbnail: model.thumbnail, isOnline: connectivity.isOnline)
+        case .paused(let paused):
+            PausedView(
+                paused: paused,
+                isOnline: connectivity.isOnline,
+                onResume: { model.resume() },
+                onDiscard: { model.discard() }
+            )
+        case .failed(let failed):
+            FailedView(
+                failed: failed,
+                onUploadAgain: { model.uploadAgain() },
+                onProcessAgain: { model.processAgain() },
+                onDiscard: { model.discard() }
+            )
+        case .complete(let scene):
+            CompleteView(
+                scene: scene,
+                thumbnail: model.thumbnail,
+                isDeleting: model.isDeleting,
+                deleteError: model.deleteError,
+                onDelete: { Task { await model.deleteCompletedScene() } },
+                onNewCapture: { model.reset() }
+            )
+        }
+    }
+}
+
+// MARK: - Home
+
+/// The start screen: preset, readiness checks, and Start capture. Anything
+/// that stops a capture says why and what to do, and Scenes stays open.
+struct HomeView: View {
+
+    @ObservedObject var model: CaptureModel
+    @Binding var preset: ScenePreset
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        // Titled by what it does: the app's name is on the Home Screen.
+        Screen(
+            title: "Capture",
+            titleDisplay: .large,
+            lead: "Walk slowly around what you want to keep, for 15 to 60 seconds. Splat Capture records video and ARKit camera poses, and Splat3D turns them into a Gaussian splat scene."
+        ) {
+            if let notice = model.notice {
+                NoticeCard(tone: notice.isError ? .alarm : .done, title: notice.title, detail: notice.detail) {
+                    Button("Dismiss") {
+                        model.notice = nil
+                    }
+                    .actionStyle(.secondary, width: .fitted)
+                }
+            }
+
+            blocker
+
+            Section {
+                presetRows
+            } header: {
+                Text("Preset")
+            } footer: {
+                Text(preset == .fast ? "The quickest and cheapest: good for trying things out." : "Higher presets take longer and cost more credits.")
+            }
+
+            Section("Requirements") {
+                FactRow(label: "LiDAR") {
+                    StatusLabel(state: model.hasLiDAR ? .done : .failed, text: model.hasLiDAR ? "Ready" : "Not on this device")
+                }
+                FactRow(label: "Camera") {
+                    StatusLabel(state: cameraDot, text: cameraText)
+                }
+                FactRow(label: "API key") {
+                    StatusLabel(state: model.hasAPIKey ? .done : .failed, text: model.hasAPIKey ? "Set" : "Missing")
+                }
+            }
+        } actions: {
+            // Scenes is in the toolbar.
+            Button("Start capture") {
+                Task { await model.startScan() }
+            }
+            .actionStyle(.primary)
+            .disabled(!canCapture)
+        }
+    }
+
+    /// The preset control and what the preset means. At accessibility sizes
+    /// the segments truncate, so each preset is a row, the chosen one
+    /// checked, as in Settings.
+    @ViewBuilder
+    private var presetRows: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            presetPicker
+                .pickerStyle(.inline)
+                .labelsHidden()
+            presetSummary
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                presetPicker
+                    .pickerStyle(.segmented)
+                presetSummary
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var presetPicker: some View {
+        Picker("Preset", selection: $preset) {
+            ForEach(ScenePreset.allCases, id: \.self) { option in
+                Text(option.title)
+                    .tag(option)
+            }
+        }
+    }
+
+    /// "800 px · 3K iterations · about 3 min".
+    private var presetSummary: some View {
+        Text(preset.summary)
+            .typeStyle(.data)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var cameraDenied: Bool {
+        model.cameraAccess == .denied || model.cameraAccess == .restricted
+    }
+
+    private var canCapture: Bool {
+        model.hasAPIKey && model.hasLiDAR && !cameraDenied
+    }
+
+    private var cameraDot: DotState {
+        switch model.cameraAccess {
+        case .authorized:
+            return .done
+        case .notDetermined:
+            return .waiting
+        default:
+            return .failed
+        }
+    }
+
+    private var cameraText: String {
+        switch model.cameraAccess {
+        case .authorized:
+            return "Allowed"
+        case .notDetermined:
+            return "Asks on first scan"
+        default:
+            return "Off in Settings"
+        }
+    }
+
+    /// What stops a capture on this device, worst first.
+    @ViewBuilder
+    private var blocker: some View {
+        if !model.hasAPIKey {
+            NoticeCard(tone: .alarm, title: "No API key", detail: missingAPIKeyMessage)
+        } else if !model.hasLiDAR {
+            NoticeCard(
+                tone: .neutral,
+                title: "This device has no LiDAR scanner",
+                detail: "Capture needs one: an iPhone 12 Pro or newer, or an iPad Pro with LiDAR. Your scenes still open here, in 3D."
+            )
+        } else if cameraDenied {
+            NoticeCard(
+                tone: .alarm,
+                title: "Camera access is off",
+                detail: "Splat Capture records video to build the scene. Turn on Camera for Splat Capture in Settings."
+            ) {
+                Button("Open Settings") {
+                    guard let settings = URL(string: UIApplication.openSettingsURLString) else {
+                        return
+                    }
+                    UIApplication.shared.open(settings)
+                }
+                .actionStyle(.secondary, width: .fitted)
+            }
+        }
+    }
+}
+
+// MARK: - Scanning
+
+/// The camera with the scanned mesh, and the capture's numbers and controls
+/// floating over it on glass.
+struct ScanningView: View {
+
+    @ObservedObject var model: CaptureModel
+    let preset: ScenePreset
+
+    /// Set by Stop and upload or Cancel, so the other can't run after it.
+    @State private var isStopping = false
+    @State private var confirmingCancel = false
+
+    #if DEBUG
+    @Environment(\.previewBackdrop) private var previewBackdrop
+    #endif
+
+    /// Space between glass surfaces; closer ones blend on iOS 26.
+    private static let glassSpacing: CGFloat = 12
+    private static let recordingDot: CGFloat = 10
 
     var body: some View {
         ZStack {
-            // Camera preview fills the screen during scanning
-            if case .scanning = viewModel.state,
-               let session = viewModel.arSession {
+            if let session = model.arSession {
                 ARCameraView(session: session)
                     .ignoresSafeArea()
-
-                // Overlay UI
-                VStack {
-                    // Top bar: timer + counters
-                    HStack {
-                        Label(viewModel.scanDuration, systemImage: "timer")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(.black.opacity(0.6), in: Capsule())
-
-                        Spacer()
-
-                        // Poses + frames stacked
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Label("\(viewModel.frameCount) poses", systemImage: "record.circle")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(.red.opacity(0.85), in: Capsule())
-
-                            Label("\(viewModel.videoFrameCount) frames", systemImage: "film.stack")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.9))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(.black.opacity(0.6), in: Capsule())
-                        }
-                    }
-                    .padding()
-
-                    Spacer()
-
-                    // Tracking quality indicator
-                    if let quality = viewModel.trackingQuality {
-                        Text(quality)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(viewModel.trackingColor.opacity(0.8), in: Capsule())
-                            .padding(.bottom, 8)
-                    }
-
-                    // Bottom: stop button
-                    Button("Stop & Upload") {
-                        Task { await viewModel.stopAndUpload(preset: preset) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .tint(.red)
-                    .padding(.bottom, 40)
-                }
             } else {
-                // Non-scanning states: standard UI
-                NavigationStack {
-                    VStack(spacing: 24) {
+                cameraStandIn
+            }
+
+            VStack(spacing: Self.glassSpacing) {
+                GlassGroup(spacing: Self.glassSpacing) {
+                    HStack(alignment: .top) {
+                        HStack(spacing: 8) {
+                            // Recording.
+                            Circle()
+                                .fill(Palette.alarm)
+                                .frame(width: Self.recordingDot, height: Self.recordingDot)
+                                .accessibilityHidden(true)
+                            Text(duration)
+                                .typeStyle(.data)
+                                .monospacedDigit()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .glassSurface(in: Capsule())
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Recording, \(duration)")
+
                         Spacer()
-                        statusSection
-                        Spacer()
-                        actionButton
+
+                        VStack(alignment: .trailing, spacing: 4) {
+                            counter("Poses", model.poseCount)
+                            counter("Frames", model.frameCount)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        // A capsule, as the timer beside it.
+                        .glassSurface(in: Capsule())
                     }
-                    .padding()
-                    .navigationTitle("Splat Capture")
-                    .navigationDestination(for: Route.self) { route in
-                        switch route {
-                        case .recentScenes:
-                            RecentScenesView()
-                        case .viewer(let sceneID, let title):
-                            SceneViewerScreen(sceneID: sceneID, title: title)
+                }
+
+                Spacer()
+
+                GlassGroup(spacing: Self.glassSpacing) {
+                    VStack(spacing: Self.glassSpacing) {
+                        readout
+
+                        // Side by side, the same width; stacked when the
+                        // text is too large. Style, not size, marks Stop
+                        // and upload as the one to take.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: Self.glassSpacing) {
+                                cancelButton
+                                stopButton
+                            }
+                            VStack(spacing: Self.glassSpacing) {
+                                stopButton
+                                cancelButton
+                            }
                         }
                     }
-                    .alert("Error", isPresented: $viewModel.showError) {
-                        Button("OK") {}
-                    } message: {
-                        Text(viewModel.errorMessage ?? "An unknown error occurred.")
-                    }
                 }
             }
+            .padding(Theme.margin)
+        }
+        .environment(\.colorScheme, .dark)
+        .confirmationDialog("Discard this scan?", isPresented: $confirmingCancel, titleVisibility: .visible) {
+            Button("Discard scan", role: .destructive) {
+                isStopping = true
+                Task { await model.cancelScan() }
+            }
+        } message: {
+            Text("The video and poses are deleted. Nothing is uploaded or charged.")
         }
     }
 
-    // MARK: - Status Section
-
+    /// Black until ARKit's camera starts. Debug previews can put a bright
+    /// room there instead, to check the glass over a light picture.
     @ViewBuilder
-    private var statusSection: some View {
-        switch viewModel.state {
-        case .idle:
-            VStack(spacing: 8) {
-                Image(systemName: "camera.viewfinder")
-                    .font(.system(size: 64))
-                    .foregroundStyle(.secondary)
-                Text("Point your iPhone at a scene and tap Start Scan")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-
-        case .scanning:
-            EmptyView()
-
-        case .uploading:
-            VStack(spacing: 8) {
-                ProgressView()
-                    .scaleEffect(1.5)
-                Text("Uploading video...")
-                    .font(.headline)
-            }
-
-        case .processing(let status, let pct):
-            VStack(spacing: 8) {
-                ProgressView(value: pct.map { $0 / 100 })
-                    .progressViewStyle(.linear)
-                    .frame(maxWidth: 200)
-                Text(status)
-                    .font(.headline)
-                if let pct {
-                    Text("\(Int(pct))%")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-        case .complete(let sceneID, let title, let viewerURL):
-            VStack(spacing: 16) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 64))
-                    .foregroundStyle(.green)
-                Text("Scene Ready!")
-                    .font(.headline)
-                Text(viewerURL.absoluteString)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                NavigationLink(value: Route.viewer(sceneID: sceneID, title: title)) {
-                    Label("View in 3D", systemImage: "cube")
-                }
-                .buttonStyle(.borderedProminent)
-                Button("Open in Safari") {
-                    UIApplication.shared.open(viewerURL)
-                }
-                .buttonStyle(.bordered)
-            }
+    private var cameraStandIn: some View {
+        #if DEBUG
+        if previewBackdrop == .brightRoom {
+            BrightRoom()
+        } else {
+            Color.black
+                .ignoresSafeArea()
         }
+        #else
+        Color.black
+            .ignoresSafeArea()
+        #endif
     }
 
-    // MARK: - Preset Picker
-
-    /// Processing preset for the next scan. Higher presets take longer and
-    /// cost more credits.
-    private var presetPicker: some View {
-        VStack(spacing: 6) {
-            Picker("Preset", selection: $preset) {
-                ForEach(ScenePreset.allCases, id: \.self) { preset in
-                    Text(preset.rawValue.capitalized).tag(preset)
-                }
+    /// ARKit's tracking and the preset in one line, "● Tracking well · Fast",
+    /// smaller than the buttons under it: something to read, not to tap.
+    private var readout: some View {
+        Group {
+            if let tracking = model.tracking {
+                StatusLabel(state: tracking.dot, text: "\(tracking.text) · \(preset.title)")
+            } else {
+                Text("\(preset.title) preset")
             }
-            .pickerStyle(.segmented)
-            Text(preset == .fast ? "Fast: the quickest and cheapest, for testing." : "Higher presets take longer and cost more credits.")
+        }
+        .font(.footnote)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .glassSurface(in: Capsule())
+        .accessibilityElement(children: .combine)
+    }
+
+    private var stopButton: some View {
+        Button("Stop and upload") {
+            isStopping = true
+            Task { await model.stopAndUpload(preset: preset) }
+        }
+        .actionStyle(.primary)
+        .disabled(isStopping)
+    }
+
+    /// A scan you don't want ends here, not as a scene.
+    private var cancelButton: some View {
+        Button("Cancel") {
+            confirmingCancel = true
+        }
+        .actionStyle(.secondary)
+        .disabled(isStopping)
+    }
+
+    /// "1:05".
+    private var duration: String {
+        let seconds = Int(model.elapsed)
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func counter(_ label: String, _ value: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            Text(value.formatted())
+                .typeStyle(.data)
+                .monospacedDigit()
         }
-    }
-
-    // MARK: - Action Button
-
-    @ViewBuilder
-    private var actionButton: some View {
-        switch viewModel.state {
-        case .idle:
-            VStack(spacing: 16) {
-                presetPicker
-                Button("Start Scan") {
-                    Task { await viewModel.startScan() }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                NavigationLink(value: Route.recentScenes) {
-                    Label("Recent Scenes", systemImage: "clock.arrow.circlepath")
-                }
-                .buttonStyle(.bordered)
-            }
-
-        case .scanning:
-            EmptyView()
-
-        case .uploading, .processing:
-            EmptyView()
-
-        case .complete:
-            Button("New Scan") {
-                viewModel.reset()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-        }
+        .accessibilityElement(children: .combine)
     }
 }
 
-// MARK: - ScanState
+// MARK: - Preset names
 
-enum ScanState {
-    case idle
-    case scanning
-    case uploading
-    case processing(status: String, pct: Double?)
-    case complete(sceneID: String, title: String, viewerURL: URL)
-}
-
-extension ScenePreset {
-    /// The SDK's parameters for this preset. Ultra also builds LOD.
-    var params: SceneParams {
-        switch self {
-        case .fast:
-            return .fast
-        case .standard:
-            return .standard
-        case .quality:
-            return .quality
-        case .ultra:
-            return .ultra
-        }
-    }
-}
-
-// MARK: - ScanViewModel
-
-@MainActor
-final class ScanViewModel: ObservableObject {
-
-    @Published var state: ScanState = .idle
-    @Published var frameCount: Int = 0
-    @Published var videoFrameCount: Int = 0
-    @Published var errorMessage: String?
-    @Published var showError: Bool = false
-    @Published var scanDuration: String = "0:00"
-    @Published var trackingQuality: String?
-    @Published var trackingColor: Color = .green
-
-    /// Exposed so the view can attach an ARSCNView to the session.
-    var arSession: ARSession? { scanner.session }
-
-    // MARK: - Splat3D Integration: Client & Scanner Setup
-    private let client = apiKey.map { SplatClient(apiKey: $0) }
-    private let scanner = SplatScanner()
-    private let haptics = UIImpactFeedbackGenerator(style: .medium)
-    private var durationTimer: Timer?
-    private var scanStartDate: Date?
-    private var lastPoseCount: Int = 0
-
-    func startScan() async {
-        // Without a key the upload fails after the whole scan: stop here.
-        guard client != nil else {
-            errorMessage = missingAPIKeyMessage
-            showError = true
-            return
-        }
-
-        // Check for LiDAR support
-        guard ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) else {
-            errorMessage = "This device doesn't have a LiDAR scanner. SplatCapture requires iPhone 12 Pro or newer (or iPad Pro with LiDAR)."
-            showError = true
-            return
-        }
-
-        do {
-            haptics.prepare()
-            lastPoseCount = 0
-
-            scanner.onFrameCountUpdated = { [weak self] count in
-                self?.frameCount = count
-                self?.videoFrameCount = self?.scanner.totalFrameCount ?? 0
-
-                // Haptic tick every 5 poses
-                if let self, count > self.lastPoseCount, count % 5 == 0 {
-                    self.haptics.impactOccurred(intensity: 0.7)
-                    self.lastPoseCount = count
-                }
-            }
-
-            // MARK: - Splat3D Integration: Start Capture
-            // scanner.start() begins the ARKit session and video recording.
-            // Access scanner.session to connect your own ARSCNView for preview.
-            try await scanner.start()
-            state = .scanning
-            scanStartDate = Date()
-
-            // Update duration + frame count every second
-            durationTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                Task { @MainActor in
-                    guard let self, let start = self.scanStartDate else { return }
-                    let elapsed = Int(Date().timeIntervalSince(start))
-                    self.scanDuration = String(format: "%d:%02d", elapsed / 60, elapsed % 60)
-                    self.videoFrameCount = self.scanner.totalFrameCount
-                }
-            }
-
-            startTrackingMonitor()
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        } catch {
-            showError(error)
-        }
-    }
-
-    func stopAndUpload(preset: ScenePreset) async {
-        durationTimer?.invalidate()
-        durationTimer = nil
-        UINotificationFeedbackGenerator().notificationOccurred(.warning)
-
-        guard let client else {
-            errorMessage = missingAPIKeyMessage
-            showError = true
-            state = .idle
-            return
-        }
-
-        do {
-            // MARK: - Splat3D Integration: Stop & Upload
-            // scanner.stop() finalizes the video and returns poses + video URL.
-            // client.createAndProcess() handles the full flow: create scene,
-            // upload video, trigger processing, and poll until complete.
-            let result = try await scanner.stop()
-            state = .uploading
-
-            let scene = try await client.createAndProcess(
-                videoURL: result.videoURL,
-                title: "Captured Scene",
-                preset: preset.params,
-                arkitPoses: result.poses,
-                lidarPoints: result.lidarPoints
-            ) { [weak self] status, pct in
-                Task { @MainActor in
-                    self?.state = .processing(
-                        status: status.rawValue.replacingOccurrences(of: "_", with: " ").capitalized,
-                        pct: pct
-                    )
-                }
-            }
-
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-
-            if let viewerURL = scene.viewerURL {
-                state = .complete(sceneID: scene.id, title: scene.displayTitle, viewerURL: viewerURL)
-            } else {
-                state = .complete(
-                    sceneID: scene.id,
-                    title: scene.displayTitle,
-                    viewerURL: URL(string: "https://splat-3d.com/tour/\(scene.id)")!
-                )
-            }
-        } catch {
-            showError(error)
-        }
-    }
-
-    func reset() {
-        state = .idle
-        frameCount = 0
-        videoFrameCount = 0
-        errorMessage = nil
-        scanDuration = "0:00"
-        trackingQuality = nil
-        lastPoseCount = 0
-    }
-
-    private func showError(_ error: Error) {
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
-        errorMessage = error.localizedDescription
-        showError = true
-        state = .idle
-        durationTimer?.invalidate()
-        durationTimer = nil
-    }
-
-    private func startTrackingMonitor() {
-        Task {
-            while case .scanning = state {
-                if let frame = scanner.session?.currentFrame {
-                    switch frame.camera.trackingState {
-                    case .normal:
-                        trackingQuality = "Tracking: Good"
-                        trackingColor = .green
-                    case .limited(let reason):
-                        trackingColor = .yellow
-                        switch reason {
-                        case .initializing:
-                            trackingQuality = "Initializing..."
-                        case .excessiveMotion:
-                            trackingQuality = "Slow down"
-                            haptics.impactOccurred(intensity: 0.8)
-                        case .insufficientFeatures:
-                            trackingQuality = "Need more detail"
-                        case .relocalizing:
-                            trackingQuality = "Relocalizing..."
-                        @unknown default:
-                            trackingQuality = "Limited tracking"
-                        }
-                    case .notAvailable:
-                        trackingQuality = "Tracking lost"
-                        trackingColor = .red
-                    }
-                }
-                try? await Task.sleep(nanoseconds: 500_000_000)
-            }
-        }
+private extension ScenePreset {
+    /// "Fast", for the preset control and the scan screen.
+    var title: String {
+        rawValue.capitalized
     }
 }
