@@ -144,12 +144,13 @@ The controls are in the toolbar at the bottom:
 
 **Info** (top right) opens the scene's details in a sheet. First, as on
 the Ready screen: the preset, training and total processing time, and the
-splat count. Then the quality metrics; the size of each model file, the
-one on screen marked **Viewing**; and the scene's ID, with a button that
-copies it, when it was created and finished processing, and whether it is
-public. API 1.5.0 added the preset, the times, the sizes and the training
-PSNR, and 1.3.0 the holdout metrics. An older API doesn't send them, and
-the sheet leaves out what it doesn't have.
+splat count. Then the quality metrics, the training PSNR with the word
+splat-3d.com gives it (Excellent, Good, Fair or Poor); the size of each
+model file, the one on screen marked **Viewing**; and the scene's ID, with
+a button that copies it, when it was created and finished processing, and
+whether it is public. API 1.5.0 added the preset, the times, the sizes and
+the training PSNR, and 1.3.0 the holdout metrics. An older API doesn't
+send them, and the sheet leaves out what it doesn't have.
 
 What can go wrong, and what the app says:
 

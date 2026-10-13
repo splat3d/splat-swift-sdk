@@ -181,10 +181,12 @@ struct SceneInfoSheet: View {
                             .typeStyle(.data)
                     }
                 }
+                // "Excellent · 27.6 dB": the word splat-3d.com gives it,
+                // then the number in mono.
                 if let psnr = scene.psnr {
                     FactRow(label: "Training PSNR") {
-                        Text(FactFormat.psnr(psnr))
-                            .typeStyle(.data)
+                        let decibels = TypeStyle.data.text(FactFormat.psnr(psnr), at: dynamicTypeSize)
+                        Text("\(Text(Self.grade(trainingPSNR: psnr))) · \(decibels)")
                     }
                 }
             } header: {
@@ -193,6 +195,21 @@ struct SceneInfoSheet: View {
                 Text(metricsNote)
             }
         }
+    }
+
+    /// splat-3d.com's words for a training PSNR: the lowest dB of each
+    /// band, best first, and the word below the last. Not for holdout
+    /// PSNR, which runs lower on the same scene.
+    private static let psnrGrades: [(floor: Double, word: String)] = [
+        (25, "Excellent"),
+        (20, "Good"),
+        (15, "Fair"),
+    ]
+    private static let lowestGrade = "Poor"
+
+    /// "Excellent" for 27.6 dB.
+    private static func grade(trainingPSNR decibels: Double) -> String {
+        psnrGrades.first { decibels >= $0.floor }?.word ?? lowestGrade
     }
 
     /// What the metrics shown mean, in plain words. "Images", not
