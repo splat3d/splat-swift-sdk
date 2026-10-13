@@ -457,6 +457,8 @@ struct NoticeBox<Actions: View>: View {
     enum Tone {
         case neutral
         case alarm
+        /// An action that went through, such as a delete.
+        case done
     }
 
     let tone: Tone
@@ -464,10 +466,22 @@ struct NoticeBox<Actions: View>: View {
     let detail: String
     @ViewBuilder let actions: Actions
 
+    /// The dot says what the box is: a failure, a finished action, or news.
+    private var dot: DotState {
+        switch tone {
+        case .neutral:
+            return .waiting
+        case .alarm:
+            return .failed
+        case .done:
+            return .done
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                StatusDot(state: tone == .alarm ? .failed : .waiting)
+                StatusDot(state: dot)
                 Text(title)
                     .typeStyle(.bodyStrong)
                     .foregroundStyle(Palette.ink)

@@ -114,6 +114,7 @@ struct FailedRun {
 struct HomeNotice: Equatable {
     let title: String
     let detail: String
+    /// `false` for an action that went through, such as a delete.
     var isError = true
 }
 
@@ -137,6 +138,8 @@ final class CaptureModel: ObservableObject {
     @Published private(set) var isDeleting = false
     /// Why the last delete failed, shown on the complete screen.
     @Published var deleteError: String?
+    /// The preset of the run on screen, for its SDK snippet.
+    @Published private(set) var runPreset: ScenePreset
 
     // Scanning
     @Published private(set) var poseCount = 0
@@ -195,6 +198,7 @@ final class CaptureModel: ObservableObject {
         let transfers = TransferWatcher()
         let session = URLSession(configuration: .default, delegate: transfers, delegateQueue: nil)
         let store = CaptureStore.live
+        let run = store.loadRun()
 
         // A capture on disk means the app was killed mid-run: offer Resume.
         let state: CaptureState = store.loadRun().map {
@@ -208,7 +212,8 @@ final class CaptureModel: ObservableObject {
             cameraAccess: AVCaptureDevice.authorizationStatus(for: .video),
             store: store,
             transfers: transfers,
-            state: state
+            state: state,
+            preset: run?.preset ?? .fast
         )
     }
 
@@ -219,7 +224,8 @@ final class CaptureModel: ObservableObject {
         cameraAccess: AVAuthorizationStatus,
         store: CaptureStore,
         transfers: TransferWatcher,
-        state: CaptureState
+        state: CaptureState,
+        preset: ScenePreset
     ) {
         self.client = client
         self.hasAPIKey = hasAPIKey
@@ -228,6 +234,7 @@ final class CaptureModel: ObservableObject {
         self.store = store
         self.transfers = transfers
         self.state = state
+        runPreset = preset
         if case .paused(let paused) = state {
             sceneID = paused.sceneID
         }
@@ -330,6 +337,7 @@ final class CaptureModel: ObservableObject {
             return
         }
         sceneID = nil
+        runPreset = run.preset
         try? store.saveSceneID(nil)
         let video = store.videoURL
 
@@ -1089,6 +1097,8 @@ extension CaptureModel {
         var hasAPIKey = true
         var cameraAccess = AVAuthorizationStatus.authorized
         var scanning: (poses: Int, frames: Int, elapsed: TimeInterval, tracking: TrackingStatus?)?
+        /// The run's preset, which the snippets show.
+        var preset = ScenePreset.fast
     }
 
     static func preview(_ state: CaptureState, _ setup: PreviewSetup = PreviewSetup()) -> CaptureModel {
@@ -1099,7 +1109,8 @@ extension CaptureModel {
             cameraAccess: setup.cameraAccess,
             store: CaptureStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("PreviewCapture")),
             transfers: TransferWatcher(),
-            state: state
+            state: state,
+            preset: setup.preset
         )
         model.isPreview = true
         if let scanning = setup.scanning {

@@ -13,6 +13,8 @@ let billingURL = URL(string: "https://splat-3d.com/dashboard/settings/billing")!
 /// then its content, on paper.
 struct Screen<Content: View>: View {
     let eyebrow: String
+    /// A dot before the eyebrow, for a screen that is a status: Failed.
+    var status: DotState?
     var sceneID: String?
     let title: String
     let lead: String?
@@ -23,6 +25,9 @@ struct Screen<Content: View>: View {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        if let status {
+                            StatusDot(state: status)
+                        }
                         MonoLabel(sceneID == nil ? eyebrow : "\(eyebrow) · scene")
                         // IDs are case sensitive: not in the label's capitals.
                         if let sceneID {
@@ -54,6 +59,8 @@ struct Screen<Content: View>: View {
 
 /// A thin accent bar over a rule, for progress that is moving.
 struct HairlineProgress: View {
+    /// What is moving, for VoiceOver: "Upload".
+    let label: String
     /// 0...1.
     let fraction: Double
 
@@ -70,6 +77,7 @@ struct HairlineProgress: View {
         .frame(height: Self.height)
         .animation(.easeOut, value: fraction)
         .accessibilityElement()
+        .accessibilityLabel(Text(label))
         .accessibilityValue(Text(fraction.formatted(.percent.precision(.fractionLength(0)))))
     }
 }
@@ -89,10 +97,26 @@ private let recoveryCall = """
     }
     """
 
+/// The call that starts a run, with the run's preset, as CaptureModel makes it.
+private func createCall(_ preset: ScenePreset) -> String {
+    """
+    let scene = try await client
+        .createAndProcess(
+            videoURL: capture.videoURL,
+            preset: .\(preset.rawValue),
+            arkitPoses: capture.poses,
+            lidarPoints: capture.lidarPoints
+        ) { status, percent in
+            print(status, percent ?? 0)
+        }
+    """
+}
+
 // MARK: - Running
 
 struct RunningView: View {
     let progress: RunProgress
+    let preset: ScenePreset
     let thumbnail: UIImage?
     let isOnline: Bool
 
@@ -114,7 +138,7 @@ struct RunningView: View {
             }
 
             if let fraction {
-                HairlineProgress(fraction: fraction)
+                HairlineProgress(label: progress.step == .uploading ? "Upload" : "Processing", fraction: fraction)
             }
 
             if !isOnline {
@@ -139,17 +163,7 @@ struct RunningView: View {
                 }
             }
 
-            APICallBlock(code: """
-                let scene = try await client
-                    .createAndProcess(
-                        videoURL: capture.videoURL,
-                        preset: .fast,
-                        arkitPoses: capture.poses,
-                        lidarPoints: capture.lidarPoints
-                    ) { status, percent in
-                        print(status, percent ?? 0)
-                    }
-                """)
+            APICallBlock(code: createCall(preset))
         }
     }
 
@@ -299,6 +313,7 @@ private struct StepRow: View {
 
 struct PausedView: View {
     let paused: PausedRun
+    let preset: ScenePreset
     let isOnline: Bool
     let onResume: () -> Void
     let onDiscard: () -> Void
@@ -343,8 +358,20 @@ struct PausedView: View {
                 Text("The video and poses on this phone are deleted. A scene already created stays in Scenes.")
             }
 
-            APICallBlock(code: paused.interruption == nil ? Self.relaunchCall : recoveryCall)
+            APICallBlock(code: call)
         }
+    }
+
+    /// The call Resume makes (CaptureModel.resume).
+    private var call: String {
+        if paused.interruption != nil {
+            return recoveryCall
+        }
+        // The scene was never created: Resume starts the run over.
+        guard paused.sceneID != nil else {
+            return createCall(preset)
+        }
+        return relaunchCall
     }
 
     /// The step that stopped. After a relaunch, SplatCapture doesn't know,
@@ -368,13 +395,15 @@ struct PausedView: View {
         return phase.rawValue
     }
 
-    private static let relaunchCall = """
+    private var relaunchCall: String {
+        """
         // After a relaunch, from what you saved:
         scene = try await client.resume(
-            sceneID: savedID, preset: .fast,
+            sceneID: savedID, preset: .\(preset.rawValue),
             arkitPoses: saved.poses,
             lidarPoints: saved.points)
         """
+    }
 }
 
 // MARK: - Failed
@@ -386,7 +415,7 @@ struct FailedView: View {
     let onDiscard: () -> Void
 
     var body: some View {
-        Screen(eyebrow: "Failed", sceneID: failed.sceneID, title: failed.title, lead: failed.detail) {
+        Screen(eyebrow: "Failed", status: .failed, sceneID: failed.sceneID, title: failed.title, lead: failed.detail) {
             if let charges = failed.charges {
                 Panel {
                     FactRow(label: "Charges") {

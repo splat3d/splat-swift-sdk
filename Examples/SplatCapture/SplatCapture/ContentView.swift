@@ -238,9 +238,15 @@ struct CaptureRoot: View {
         case .idle, .scanning:
             HomeView(model: model, preset: $preset)
         case .running(let progress):
-            RunningView(progress: progress, thumbnail: model.thumbnail, isOnline: connectivity.isOnline)
+            RunningView(progress: progress, preset: model.runPreset, thumbnail: model.thumbnail, isOnline: connectivity.isOnline)
         case .paused(let paused):
-            PausedView(paused: paused, isOnline: connectivity.isOnline, onResume: { model.resume() }, onDiscard: { model.discard() })
+            PausedView(
+                paused: paused,
+                preset: model.runPreset,
+                isOnline: connectivity.isOnline,
+                onResume: { model.resume() },
+                onDiscard: { model.discard() }
+            )
         case .failed(let failed):
             FailedView(
                 failed: failed,
@@ -277,7 +283,7 @@ struct HomeView: View {
             lead: "Walk slowly around what you want to keep, for 15 to 60 seconds. SplatCapture records video and ARKit camera poses, and Splat3D turns them into a Gaussian splat scene."
         ) {
             if let notice = model.notice {
-                NoticeBox(tone: notice.isError ? .alarm : .neutral, title: notice.title, detail: notice.detail) {
+                NoticeBox(tone: notice.isError ? .alarm : .done, title: notice.title, detail: notice.detail) {
                     Button("Dismiss") {
                         model.notice = nil
                     }
@@ -458,7 +464,11 @@ struct ScanningView: View {
                 }
                 .buttonStyle(.primary)
 
-                MonoLabel("Preset \(preset.rawValue)")
+                overlay {
+                    MonoLabel("Preset \(preset.rawValue)")
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                }
             }
             .padding(Hairline.margin)
         }

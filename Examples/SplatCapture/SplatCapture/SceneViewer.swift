@@ -463,7 +463,7 @@ private struct DownloadProgress: View {
     var body: some View {
         VStack(spacing: 12) {
             if let expected {
-                ProgressView(value: Double(min(received, expected)), total: Double(expected))
+                HairlineProgress(label: "Download", fraction: Double(min(received, expected)) / Double(expected))
                     .frame(maxWidth: 240)
                 Text("Downloading SPZ · \(Self.format(received)) of \(Self.format(expected))")
             } else {
