@@ -184,6 +184,10 @@ All notable changes to Splat3D. Versions follow [Semantic Versioning](https://se
   which `ScenePreset` lacks because retrain refuses it. The memberwise
   initializer takes the details as trailing parameters with defaults, so
   existing calls compile.
+- `SplatScene` decodes the quality metrics API 1.3.0 already sends:
+  `psnrHoldout` and `ssimHoldout`, measured on photos kept out of training
+  (`nil` for `fast` scenes, which hold none out), and `ssim`, measured on
+  the training photos. They are trailing memberwise parameters too.
 - The SplatCapture example app, and macOS CI for the package and the example.
 - The example views scenes in 3D with [SplatKit](https://github.com/Xget7/splatkit-ios)
   (MIT): a Recent Scenes list, **View in 3D** after a capture, and a preset

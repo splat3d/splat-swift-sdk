@@ -427,3 +427,66 @@ extension SplatClientTests {
         XCTAssertNil(detailed.modelSizes.spz)
     }
 }
+
+// MARK: - Quality metrics
+//
+// psnr_holdout, ssim_holdout and ssim (toPublicScene in api/src/lib/scenes.ts),
+// which API 1.3.0 already sends. Null where a scene has none, as on `fast`
+// scenes, which hold no photos out; missing in list items before 1.3.0.
+
+extension SplatClientTests {
+
+    func testCompleteSceneCarriesItsMetrics() async throws {
+        let scene = try await scene(from: Fixture.completeScene)
+
+        XCTAssertEqual(scene.psnrHoldout, 24.28)
+        XCTAssertEqual(scene.ssimHoldout, 0.79)
+        XCTAssertEqual(scene.ssim, 0.82)
+    }
+
+    func testNullMetricsReadNil() async throws {
+        let scene = try await scene(from: Fixture.completeFastScene)
+
+        XCTAssertEqual(scene.preset, .fast)
+        XCTAssertEqual(scene.psnr, 26.1)
+        XCTAssertNil(scene.psnrHoldout)
+        XCTAssertNil(scene.ssimHoldout)
+        XCTAssertNil(scene.ssim)
+    }
+
+    func testMissingMetricsReadNil() async throws {
+        let scene = try await scene(from: Fixture.completeSceneWithoutMetrics)
+
+        XCTAssertTrue(scene.isComplete)
+        XCTAssertNil(scene.psnrHoldout)
+        XCTAssertNil(scene.ssimHoldout)
+        XCTAssertNil(scene.ssim)
+    }
+
+    func testEncodingKeepsTheMetrics() async throws {
+        let scene = try await scene(from: Fixture.completeScene)
+
+        let again = try JSONDecoder().decode(SplatScene.self, from: JSONEncoder().encode(scene))
+
+        XCTAssertEqual(again, scene)
+        XCTAssertEqual(again.psnrHoldout, 24.28)
+        XCTAssertEqual(again.ssimHoldout, 0.79)
+        XCTAssertEqual(again.ssim, 0.82)
+    }
+
+    func testMetricsTakePartInEquality() {
+        let plain = SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast)
+        let variants = [
+            SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast, psnrHoldout: 24.28),
+            SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast, ssimHoldout: 0.79),
+            SplatScene(id: "local", status: .complete, createdAt: .distantPast, updatedAt: .distantPast, ssim: 0.82),
+        ]
+
+        XCTAssertNil(plain.psnrHoldout)
+        XCTAssertNil(plain.ssimHoldout)
+        XCTAssertNil(plain.ssim)
+        for variant in variants {
+            XCTAssertNotEqual(plain, variant)
+        }
+    }
+}

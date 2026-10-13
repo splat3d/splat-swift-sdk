@@ -298,6 +298,30 @@ enum Fixture {
         completeSceneWithDetails.replacingOccurrences(of: "\"preset\": \"standard\"", with: "\"preset\": \"\(preset)\"")
     }
 
+    // MARK: - Quality metrics
+    //
+    // ssim, psnr_holdout and ssim_holdout: GET has sent them since S3D-174,
+    // list items since API 1.3.0 (toPublicScene in api/src/lib/scenes.ts).
+    // ``completeScene`` carries all three.
+
+    /// GET /v1/scenes/{id} → 200 for a complete `fast` scene: its
+    /// output.holdout_ratio defaults to 0 (packages/core/src/params.ts), so
+    /// no photos were held out and both holdout metrics are null. ssim is
+    /// null too: the complete writeback doesn't store it
+    /// (buildCompleteSceneUpdate in web/src/lib/scene-complete.ts).
+    static let completeFastScene = completeScene(preset: "fast")
+        .replacingOccurrences(of: "\"ssim\": 0.82", with: "\"ssim\": null")
+        .replacingOccurrences(of: "\"psnr_holdout\": 24.28", with: "\"psnr_holdout\": null")
+        .replacingOccurrences(of: "\"ssim_holdout\": 0.79", with: "\"ssim_holdout\": null")
+
+    /// ``completeScene`` without the three metric keys. No API answers GET
+    /// so, but list items from APIs before 1.3.0 did (listScenes selected
+    /// no metric columns), and a scene decodes the same either way.
+    static let completeSceneWithoutMetrics = completeScene
+        .replacingOccurrences(of: "\"ssim\": 0.82,", with: "")
+        .replacingOccurrences(of: "\"psnr_holdout\": 24.28,", with: "")
+        .replacingOccurrences(of: "\"ssim_holdout\": 0.79,", with: "")
+
     /// GET /v1/scenes?limit=2 → 200, first of two pages. Items have the shape
     /// GET answers (toPublicScene); meta: the list route in
     /// api/src/routes/scenes.ts and listScenes in api/src/lib/scenes.ts, whose

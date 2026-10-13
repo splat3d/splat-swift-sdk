@@ -69,6 +69,13 @@ final class ContractTests: XCTestCase {
         // pinned 1.3.0 spec doesn't declare. Empty once the spec is refreshed.
         FixtureCase("completeSceneWithDetails", Fixture.completeSceneWithDetails, "getScene", 200, deviations: sceneDetailKeys),
         FixtureCase("completeSceneWithNullDetails", Fixture.completeSceneWithNullDetails, "getScene", 200, deviations: sceneDetailKeys),
+        FixtureCase("completeFastScene", Fixture.completeFastScene, "getScene", 200, deviations: sceneDetailKeys),
+        // The spec requires the metrics; list items before API 1.3.0 lacked them.
+        FixtureCase("completeSceneWithoutMetrics", Fixture.completeSceneWithoutMetrics, "getScene", 200, deviations: [
+            "missing data.ssim",
+            "missing data.psnr_holdout",
+            "missing data.ssim_holdout",
+        ]),
         FixtureCase("scenePageOne", Fixture.scenePageOne, "listScenes", 200),
         FixtureCase("scenePageTwo", Fixture.scenePageTwo, "listScenes", 200),
         FixtureCase("updatedScene", Fixture.updatedScene, "updateScene", 200),

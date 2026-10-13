@@ -138,6 +138,8 @@ public struct SceneStatus: RawRepresentable, Hashable, Codable, Sendable, CaseIt
 /// The scene details, ``preset``, ``psnr``, ``trainingTime``,
 /// ``processingStartedAt``, ``processingCompletedAt`` and ``modelSizes``,
 /// come from API 1.5.0 on. Older APIs don't send them, so they read `nil`.
+/// The quality metrics ``psnrHoldout``, ``ssimHoldout`` and ``ssim`` come
+/// from API 1.3.0 too.
 public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
 
     /// Unique scene identifier.
@@ -205,6 +207,25 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
     /// usually higher than a holdout score.
     public let psnr: Double?
 
+    /// PSNR in dB, higher is better, measured on photos kept out of training.
+    ///
+    /// `nil` unless the scene completed with photos held out, which every
+    /// preset but ``Preset/fast`` does by default.
+    public let psnrHoldout: Double?
+
+    /// SSIM, up to 1 and higher is better, measured on photos kept out of
+    /// training.
+    ///
+    /// `nil` unless the scene completed with photos held out, as for
+    /// ``psnrHoldout``.
+    public let ssimHoldout: Double?
+
+    /// SSIM, up to 1 and higher is better, measured on the photos the model
+    /// trained on, so it runs higher than ``ssimHoldout``.
+    ///
+    /// `nil` when the API has no value for the scene.
+    public let ssim: Double?
+
     /// Seconds the GPU training stage took, once the scene completes.
     ///
     /// Frame extraction, pose estimation, compression and queueing are
@@ -268,6 +289,9 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         case spzSizeBytes = "spz_size_bytes"
         case sogSizeBytes = "sog_size_bytes"
         case plySizeBytes = "ply_size_bytes"
+        case psnrHoldout = "psnr_holdout"
+        case ssimHoldout = "ssim_holdout"
+        case ssim
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -305,6 +329,12 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
             sog: container.decodeIfPresent(Int.self, forKey: .sogSizeBytes),
             ply: container.decodeIfPresent(Int.self, forKey: .plySizeBytes)
         )
+
+        // Quality metrics (API 1.3.0 sends them; list items from older APIs
+        // don't). A missing key reads nil as null does.
+        psnrHoldout = try container.decodeIfPresent(Double.self, forKey: .psnrHoldout)
+        ssimHoldout = try container.decodeIfPresent(Double.self, forKey: .ssimHoldout)
+        ssim = try container.decodeIfPresent(Double.self, forKey: .ssim)
 
         // The thumbnail link: thumbnail_url when the server sent an absolute
         // one, else the API route on the deployment the scene came from.
@@ -359,6 +389,11 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         try container.encodeIfPresent(modelSizes.spz, forKey: .spzSizeBytes)
         try container.encodeIfPresent(modelSizes.sog, forKey: .sogSizeBytes)
         try container.encodeIfPresent(modelSizes.ply, forKey: .plySizeBytes)
+
+        // Quality metrics, under the keys decoding reads.
+        try container.encodeIfPresent(psnrHoldout, forKey: .psnrHoldout)
+        try container.encodeIfPresent(ssimHoldout, forKey: .ssimHoldout)
+        try container.encodeIfPresent(ssim, forKey: .ssim)
     }
 
     /// Memberwise initializer for testing and internal use.
@@ -383,7 +418,10 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         trainingTime: TimeInterval? = nil,
         processingStartedAt: Date? = nil,
         processingCompletedAt: Date? = nil,
-        modelSizes: ModelSizes = ModelSizes()
+        modelSizes: ModelSizes = ModelSizes(),
+        psnrHoldout: Double? = nil,
+        ssimHoldout: Double? = nil,
+        ssim: Double? = nil
     ) {
         self.id = id
         self.title = title
@@ -407,6 +445,9 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         self.processingStartedAt = processingStartedAt
         self.processingCompletedAt = processingCompletedAt
         self.modelSizes = modelSizes
+        self.psnrHoldout = psnrHoldout
+        self.ssimHoldout = ssimHoldout
+        self.ssim = ssim
     }
 
     /// Equatable conformance (ignores derived thumbnailURL — compares all stored properties).
@@ -431,6 +472,9 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
             && lhs.processingStartedAt == rhs.processingStartedAt
             && lhs.processingCompletedAt == rhs.processingCompletedAt
             && lhs.modelSizes == rhs.modelSizes
+            && lhs.psnrHoldout == rhs.psnrHoldout
+            && lhs.ssimHoldout == rhs.ssimHoldout
+            && lhs.ssim == rhs.ssim
     }
 }
 
