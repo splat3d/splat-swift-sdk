@@ -783,7 +783,7 @@ final class CaptureModel: ObservableObject {
     private static func captureUnreadable(sceneID: String?) -> FailedRun {
         FailedRun(
             title: "The saved capture can't be read",
-            detail: "Without it SplatCapture can't rebuild the launch exactly. A scene that was launched keeps processing, and shows in Scenes.",
+            detail: "Without it Splat Capture can't rebuild the launch exactly. A scene that was launched keeps processing, and shows in Scenes.",
             charges: nil,
             sceneID: sceneID,
             retry: .impossible
@@ -1017,13 +1017,13 @@ extension PausedRun {
     var detail: String {
         switch cause {
         case .connection:
-            return "The network dropped before SplatCapture heard back."
+            return "The network dropped before Splat Capture heard back."
         case .backgrounded:
-            return "iOS paused SplatCapture soon after you left it. It picks up when you come back, or tap Resume."
+            return "iOS paused Splat Capture soon after you left it. It picks up when you come back, or tap Resume."
         case .appClosed:
-            return "SplatCapture closed while this capture was on its way. Resume picks up where it stopped."
+            return "Splat Capture closed while this capture was on its way. Resume picks up where it stopped."
         case .insufficientCredits(let message):
-            return "\(message) Add credits, then Resume."
+            return "\(Self.droppingCreditsPreamble(message)) Add credits, then Resume."
         case .queueFull(let message):
             return message
         case .quotaExceeded(let message):
@@ -1031,7 +1031,7 @@ extension PausedRun {
         case .keyRejected:
             return "The API didn't accept this build's key. Set SPLAT_API_KEY in Secrets.xcconfig and build again."
         case .timedOut:
-            return "SplatCapture stopped waiting, but the job may still finish. Resume keeps watching."
+            return "Splat Capture stopped waiting, but the job may still finish. Resume keeps watching."
         case .other(let message):
             return message
         }
@@ -1055,6 +1055,18 @@ extension PausedRun {
             return "Processing was charged once, and keeps running on the server."
         }
         return "A launch that went through is replayed, not charged again."
+    }
+
+    /// The API's refusal opens with what the title already says: "Not
+    /// enough credits" over "Insufficient credits. Need 10 credits to
+    /// process this scene."
+    private static let creditsPreamble = "Insufficient credits. "
+
+    private static func droppingCreditsPreamble(_ message: String) -> String {
+        guard message.hasPrefix(creditsPreamble) else {
+            return message
+        }
+        return String(message.dropFirst(creditsPreamble.count))
     }
 
     /// The API refuses these launches before charging anything.

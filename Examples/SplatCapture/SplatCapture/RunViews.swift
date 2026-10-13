@@ -9,46 +9,76 @@ import Splat3D
 /// Where to add credits: the billing page of the Splat3D dashboard.
 let billingURL = URL(string: "https://splat-3d.com/dashboard/settings/billing")!
 
-/// A screen on the grouped ground: a navigation title, a headline in
-/// Hanken, a lead, the scene's ID once it has one, then its content.
-struct Screen<Content: View>: View {
-    /// The navigation bar's title: where the run is, such as "Paused".
+/// A screen as an inset grouped list, so its margins and corners are the
+/// system's: a navigation title, an optional headline in Hanken, a lead, the
+/// scene's ID once it has one, then its sections. Its actions are pinned at
+/// the foot, over the list, which scrolls under them.
+struct Screen<Content: View, Actions: View>: View {
+    /// The navigation bar's title: what the screen is for, or where the run
+    /// is, such as "Paused".
     let title: String
     var titleDisplay = NavigationBarItem.TitleDisplayMode.inline
     /// A dot before the scene's ID, for a screen that is a status: Failed.
     var status: DotState?
     var sceneID: String?
-    let headline: String
+    /// Beside a large title, none: the lead follows the title.
+    var headline: String?
     let lead: String?
     @ViewBuilder let content: Content
+    @ViewBuilder let actions: Actions
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(headline)
-                        .typeStyle(.display)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let lead {
-                        Text(lead)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let sceneID {
-                        sceneLine(sceneID)
-                    }
-                }
-                content
+        Group {
+            // A screen with nothing to do, such as Running, has no bar.
+            if Actions.self == EmptyView.self {
+                list
+            } else {
+                list.actionBar { actions }
             }
-            .padding(.horizontal, Theme.margin)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Palette.ground)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(titleDisplay)
+    }
+
+    private var list: some View {
+        List {
+            // A section's header, not a row: on iOS 26 a row clips its
+            // corners, which cut into the first and last letters.
+            Section {
+            } header: {
+                header
+                    // From the cards' edge: in line with the large title,
+                    // and with the margin the cards have.
+                    .listRowInsets(EdgeInsets())
+                    .textCase(nil)
+            }
+            content
+        }
+        .listStyle(.insetGrouped)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let headline {
+                Text(headline)
+                    .typeStyle(.display)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let lead {
+                // What the screen says: body text in the primary color, not
+                // a section header's.
+                Text(lead)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let sceneID {
+                sceneLine(sceneID)
+            }
+        }
+        .foregroundStyle(.primary)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// "Scene a1b2c3d4e5f6". At accessibility sizes the ID goes under the
@@ -72,6 +102,48 @@ struct Screen<Content: View>: View {
                 .textSelection(.enabled)
         }
         .padding(.top, 2)
+    }
+}
+
+extension Screen where Actions == EmptyView {
+    /// A screen with no actions.
+    init(
+        title: String,
+        titleDisplay: NavigationBarItem.TitleDisplayMode = .inline,
+        status: DotState? = nil,
+        sceneID: String? = nil,
+        headline: String? = nil,
+        lead: String?,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.init(
+            title: title,
+            titleDisplay: titleDisplay,
+            status: status,
+            sceneID: sceneID,
+            headline: headline,
+            lead: lead,
+            content: content,
+            actions: { EmptyView() }
+        )
+    }
+}
+
+/// What a button in a screen's action bar does, under it.
+struct ActionNote: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -99,26 +171,19 @@ struct RunningView: View {
 
     private static let percent: Double = 100
     private static let previewHeight: CGFloat = 200
-    private static let previewCorner: CGFloat = 14
 
     var body: some View {
         Screen(title: "Running", sceneID: progress.sceneID, headline: title, lead: lead) {
-            VStack(spacing: 12) {
-                Card {
-                    StepRow(name: "Save capture", state: state(of: .saving), detail: progress.step > .saving ? "Done" : "")
-                    CardDivider()
-                    StepRow(name: "Upload", state: state(of: .uploading), detail: uploadDetail)
-                    CardDivider()
-                    StepRow(name: "Launch", state: state(of: .launching), detail: launchDetail)
-                    CardDivider()
-                    StepRow(name: "Process", note: processNote, state: state(of: .processing), detail: processDetail)
-                    CardDivider()
-                    StepRow(name: "Ready", state: .waiting, detail: "")
-                }
-
+            Section {
+                StepRow(name: "Save capture", state: state(of: .saving), detail: progress.step > .saving ? .words("Done") : nil)
+                StepRow(name: "Upload", state: state(of: .uploading), detail: uploadDetail)
+                StepRow(name: "Launch", state: state(of: .launching), detail: launchDetail)
+                StepRow(name: "Process", note: processNote, state: state(of: .processing), detail: processDetail)
+                StepRow(name: "Ready", state: .waiting, detail: nil)
+            } footer: {
                 if let fraction {
                     RunProgressBar(label: progress.step == .uploading ? "Upload" : "Processing", fraction: fraction)
-                        .padding(.horizontal, Theme.rowInset)
+                        .padding(.top, 4)
                 }
             }
 
@@ -126,18 +191,21 @@ struct RunningView: View {
                 NoticeCard(
                     tone: .neutral,
                     title: "You're offline",
-                    detail: "A job that started keeps running on the server. SplatCapture catches up when you're back online."
+                    detail: "A job that started keeps running on the server. Splat Capture catches up when you're back online."
                 )
             }
 
             if let thumbnail {
-                CardSection(header: "Preview") {
+                Section("Preview") {
+                    // Edge to edge: the list rounds it with the section.
                     Image(uiImage: thumbnail)
                         .resizable()
-                        .scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: Self.previewCorner, style: .continuous))
-                        .frame(maxWidth: .infinity, maxHeight: Self.previewHeight)
-                        .padding(10)
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: Self.previewHeight)
+                        .clipped()
+                        .listRowInsets(EdgeInsets())
+                        .accessibilityLabel("Preview of the scene")
                 }
             }
         }
@@ -159,7 +227,7 @@ struct RunningView: View {
     private var lead: String {
         switch progress.step {
         case .saving, .uploading:
-            return "Keep SplatCapture open until the upload is done. If you leave, it pauses, and picks up when you're back."
+            return "Keep Splat Capture open until the upload is done. If you leave, it pauses, and picks up when you're back."
         case .launching:
             return "Splat3D checks the upload and starts a GPU job. A launch sent twice is still charged once."
         case .processing:
@@ -174,13 +242,14 @@ struct RunningView: View {
         guard progress.step == step else {
             return .waiting
         }
+        // A ring while there is a measure of how far, a spinner until then.
         switch step {
         case .uploading:
-            return .running(uploadFraction ?? 0)
+            return uploadFraction.map { .running($0) } ?? .busy
         case .processing:
-            return .running((progress.percent ?? 0) / Self.percent)
+            return progress.percent.map { .running($0 / Self.percent) } ?? .busy
         default:
-            return .running(0)
+            return .busy
         }
     }
 
@@ -202,25 +271,25 @@ struct RunningView: View {
         }
     }
 
-    private var uploadDetail: String {
+    private var uploadDetail: StepDetail? {
         if progress.step > .uploading {
-            return "Done"
+            return .words("Done")
         }
         guard progress.step == .uploading else {
-            return ""
+            return nil
         }
         let sent = progress.bytesSent.formatted(.byteCount(style: .file))
         guard let total = progress.bytesTotal else {
-            return progress.bytesSent > 0 ? sent : "Starting"
+            return progress.bytesSent > 0 ? .data(sent) : .words("Starting")
         }
-        return "\(sent) of \(total.formatted(.byteCount(style: .file)))"
+        return .data("\(sent) of \(total.formatted(.byteCount(style: .file)))")
     }
 
-    private var launchDetail: String {
+    private var launchDetail: StepDetail? {
         if progress.step > .launching {
-            return "Accepted"
+            return .words("Accepted")
         }
-        return progress.step == .launching ? "Sending" : ""
+        return progress.step == .launching ? .words("Sending") : nil
     }
 
     /// The status in words; any status the app doesn't know reads "Working".
@@ -228,24 +297,31 @@ struct RunningView: View {
         progress.step == .processing ? progress.status?.displayName : nil
     }
 
-    /// The raw status and percent, e.g. "training · 42%".
-    private var processDetail: String {
-        guard progress.step == .processing, let status = progress.status else {
-            return ""
+    /// The percent, "42%", once the API sends one. The status is in the
+    /// note, in words: the API's own name for it is for code, not people.
+    private var processDetail: StepDetail? {
+        guard progress.step == .processing, let percent = progress.percent else {
+            return nil
         }
-        guard let percent = progress.percent else {
-            return status.rawValue
-        }
-        return "\(status.rawValue) · \(Int(percent))%"
+        return .data("\(Int(percent))%")
     }
 }
 
-/// One step of a run: dot, name, optional note, and a mono detail.
+/// A step's detail, beside its name: words in the system font, numbers in
+/// mono.
+private enum StepDetail {
+    /// "Done", "Sending".
+    case words(String)
+    /// "48 MB of 112 MB", "42%".
+    case data(String)
+}
+
+/// One step of a run: dot, name, optional note, and a detail.
 private struct StepRow: View {
     let name: String
     var note: String?
     let state: DotState
-    let detail: String
+    let detail: StepDetail?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -264,26 +340,31 @@ private struct StepRow: View {
                 }
                 // At accessibility sizes there is no room beside the name:
                 // the detail goes under it, whole.
-                if dynamicTypeSize.isAccessibilitySize, !detail.isEmpty {
-                    detailText
+                if dynamicTypeSize.isAccessibilitySize, let detail {
+                    detailText(detail)
                 }
             }
             Spacer(minLength: 8)
-            if !dynamicTypeSize.isAccessibilitySize {
-                detailText
+            if !dynamicTypeSize.isAccessibilitySize, let detail {
+                detailText(detail)
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, Theme.rowInset)
-        .padding(.vertical, Theme.rowPadding)
-        .frame(minHeight: Theme.touchTarget)
         .accessibilityElement(children: .combine)
     }
 
-    private var detailText: some View {
-        Text(detail)
-            .typeStyle(.data)
-            .foregroundStyle(.secondary)
+    @ViewBuilder
+    private func detailText(_ detail: StepDetail) -> some View {
+        switch detail {
+        case .words(let words):
+            Text(words)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        case .data(let data):
+            Text(data)
+                .typeStyle(.data)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -313,54 +394,53 @@ struct PausedView: View {
 
     var body: some View {
         Screen(title: "Paused", sceneID: paused.sceneID, headline: paused.title, lead: paused.detail) {
-            Card {
+            Section {
                 FactRow(label: "Stopped at") {
                     Text(stoppedAt)
                 }
-                CardDivider()
-                FactRow(label: "Charges") {
+                FactRow(label: "Charges", layout: .stacked) {
                     Text(paused.charges)
                 }
-                CardDivider()
                 FactRow(label: "Network") {
                     StatusLabel(state: isOnline ? .done : .failed, text: isOnline ? "Online" : "Offline")
                 }
             }
-
-            VStack(spacing: 12) {
-                if needsCredits {
-                    Link("Add credits", destination: billingURL)
-                        .actionStyle(.primary)
-                }
-                Button("Resume", action: onResume)
-                    .actionStyle(needsCredits ? .secondary : .primary)
-                    .disabled(waitsForNetwork)
-                if waitsForNetwork {
-                    Text("Resumes by itself when you're back online.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .multilineTextAlignment(.center)
-                }
-                // The plan's monthly limit: billing is where the plan changes.
-                if case .quotaExceeded = paused.cause {
-                    Link("Open billing", destination: billingURL)
-                        .actionStyle(.secondary)
-                }
-                Button("Discard capture", role: .destructive) {
-                    confirmingDiscard = true
-                }
-                .actionStyle(.destructive)
+        } actions: {
+            if needsCredits {
+                Link("Add credits", destination: billingURL)
+                    .actionStyle(.primary)
             }
-            .confirmationDialog("Discard this capture?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
-                Button("Discard capture", role: .destructive, action: onDiscard)
-            } message: {
-                Text("The video and poses on this phone are deleted. A scene already created stays in Scenes.")
+            Button("Resume", action: onResume)
+                .actionStyle(needsCredits ? .secondary : .primary)
+                .disabled(waitsForNetwork)
+            if waitsForNetwork {
+                ActionNote("Resumes by itself when you're back online.")
             }
+            // The plan's monthly limit: billing is where the plan changes.
+            if case .quotaExceeded = paused.cause {
+                Link("Open billing", destination: billingURL)
+                    .actionStyle(.secondary)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                MoreMenu {
+                    Button(role: .destructive) {
+                        confirmingDiscard = true
+                    } label: {
+                        Label("Discard capture", systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .confirmationDialog("Discard this capture?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+            Button("Discard capture", role: .destructive, action: onDiscard)
+        } message: {
+            Text("The video and poses on this phone are deleted. A scene already created stays in Scenes.")
         }
     }
 
-    /// The step that stopped. After a relaunch, SplatCapture doesn't know,
+    /// The step that stopped. After a relaunch, Splat Capture doesn't know,
     /// and resume works it out.
     private var stoppedAt: String {
         guard paused.sceneID != nil else {
@@ -378,7 +458,8 @@ struct PausedView: View {
         if phase == .wait {
             return "Processing"
         }
-        return phase.rawValue
+        // A phase this app doesn't know: its raw name is for code.
+        return "Unknown"
     }
 }
 
@@ -390,53 +471,51 @@ struct FailedView: View {
     let onProcessAgain: () -> Void
     let onDiscard: () -> Void
 
+    @State private var confirmingDiscard = false
+
     var body: some View {
         Screen(title: "Failed", status: .failed, sceneID: failed.sceneID, headline: failed.title, lead: failed.detail) {
             if let charges = failed.charges {
-                Card {
-                    FactRow(label: "Charges") {
+                Section {
+                    FactRow(label: "Charges", layout: .stacked) {
                         Text(charges)
                     }
                 }
             }
+        } actions: {
+            switch failed.retry {
+            case .uploadAgain:
+                Button("Upload again", action: onUploadAgain)
+                    .actionStyle(.primary)
+                ActionNote("Sends the saved capture to a new scene and deletes this one. Nothing is charged until it launches.")
+            case .processAgain:
+                Button("Process again", action: onProcessAgain)
+                    .actionStyle(.primary)
+                ActionNote("Creates a new scene from the saved capture, and charges it.")
+            case .impossible:
+                EmptyView()
+            }
 
-            VStack(spacing: 12) {
-                switch failed.retry {
-                case .uploadAgain:
-                    Button("Upload again", action: onUploadAgain)
-                        .actionStyle(.primary)
-                    note("Sends the saved capture to a new scene and deletes this one. Nothing is charged until it launches.")
-                case .processAgain:
-                    Button("Process again", action: onProcessAgain)
-                        .actionStyle(.primary)
-                    note("Creates a new scene from the saved capture, and charges it.")
-                case .impossible:
-                    EmptyView()
+            if failed.retry == .impossible {
+                Button("New capture", action: onDiscard)
+                    .actionStyle(.primary)
+                // Say so, as Upload again does: the scene goes too.
+                if failed.leftoverScene == .delete {
+                    ActionNote("Also deletes this scene, which was never launched or charged.")
                 }
-
-                if failed.retry == .impossible {
-                    Button("New capture", action: onDiscard)
-                        .actionStyle(.primary)
-                    // Say so, as Upload again does: the scene goes too.
-                    if failed.leftoverScene == .delete {
-                        note("Also deletes this scene, which was never launched or charged.")
-                    }
-                } else {
-                    Button("Discard capture", role: .destructive, action: onDiscard)
-                        .actionStyle(.destructive)
+            } else {
+                Button("Discard capture", role: .destructive) {
+                    confirmingDiscard = true
                 }
+                .actionStyle(.destructive)
             }
         }
-    }
-
-    /// What the button above does, under it.
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-            .fixedSize(horizontal: false, vertical: true)
+        // As on Paused: the saved capture can't come back.
+        .confirmationDialog("Discard this capture?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+            Button("Discard capture", role: .destructive, action: onDiscard)
+        } message: {
+            Text("The video and poses on this phone are deleted. A scene already created stays in Scenes.")
+        }
     }
 }
 
@@ -456,56 +535,63 @@ struct CompleteView: View {
 
     var body: some View {
         Screen(title: "Ready", sceneID: scene.id, headline: "Your scene is ready", lead: scene.displayTitle) {
-            preview
-
-            Card {
-                FactRow(label: "Splats") {
-                    Text(scene.numGaussians.map { $0.formatted(.number.notation(.compactName)) } ?? "—")
-                        .typeStyle(.data)
-                }
-                CardDivider()
-                FactRow(label: "Status") {
-                    StatusLabel(state: .done, text: scene.status.displayName)
-                }
-                CardDivider()
-                FactRow(label: "Created") {
-                    Text(scene.createdAt.formatted(date: .abbreviated, time: .shortened))
-                }
-            }
-
-            // Above the buttons, so a failed delete shows where you tapped.
+            // First, where it shows after a delete from the toolbar.
             if let deleteError {
                 NoticeCard(tone: .alarm, title: "Couldn't delete", detail: deleteError)
             }
 
-            VStack(spacing: 12) {
-                NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
-                    Text("View in 3D")
-                }
-                .actionStyle(.primary)
-
-                if let viewerURL = scene.viewerURL {
-                    Link("Open on splat-3d.com", destination: viewerURL)
-                        .actionStyle(.secondary)
-                }
-
-                Button("New capture", action: onNewCapture)
-                    .actionStyle(.secondary)
-
-                Button(isDeleting ? "Deleting…" : "Delete scene", role: .destructive) {
-                    confirmingDelete = true
-                }
-                .actionStyle(.destructive)
-                .disabled(isDeleting)
+            Section {
+                preview
+                    .listRowInsets(EdgeInsets())
             }
-            .confirmationDialog("Delete this scene?", isPresented: $confirmingDelete, titleVisibility: .visible) {
-                Button("Delete scene", role: .destructive, action: onDelete)
-            } message: {
-                Text("Its model, video and thumbnail are deleted for good.")
+
+            Section {
+                FactRow(label: "Splats") {
+                    Text(scene.numGaussians.map { $0.formatted(.number.notation(.compactName)) } ?? "—")
+                        .typeStyle(.data)
+                }
+                FactRow(label: "Created") {
+                    Text(scene.createdAt.formatted(date: .abbreviated, time: .shortened))
+                }
             }
+        } actions: {
+            NavigationLink(value: Route.viewer(sceneID: scene.id, title: scene.displayTitle, webURL: scene.viewerURL)) {
+                Text("View in 3D")
+            }
+            .actionStyle(.primary)
+
+            Button("New capture", action: onNewCapture)
+                .actionStyle(.secondary)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if isDeleting {
+                    ProgressView()
+                        .accessibilityLabel("Deleting the scene")
+                } else {
+                    MoreMenu {
+                        if let viewerURL = scene.viewerURL {
+                            Link(destination: viewerURL) {
+                                Label("Open on splat-3d.com", systemImage: "safari")
+                            }
+                        }
+                        Button(role: .destructive) {
+                            confirmingDelete = true
+                        } label: {
+                            Label("Delete scene", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+        }
+        .confirmationDialog("Delete this scene?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete scene", role: .destructive, action: onDelete)
+        } message: {
+            Text("Its model, video and thumbnail are deleted for good.")
         }
     }
 
+    /// Edge to edge in its section, which rounds it.
     private var preview: some View {
         ThumbnailPlaceholder(style: .mark)
             .overlay {
@@ -516,6 +602,6 @@ struct CompleteView: View {
                 }
             }
             .aspectRatio(Self.thumbnailAspect, contentMode: .fit)
-            .clipShape(Theme.cardShape)
+            .clipped()
     }
 }

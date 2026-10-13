@@ -81,11 +81,7 @@ struct RecentScenesView: View {
         case .loaded(let scenes):
             List {
                 if let deleteError = model.deleteError {
-                    Section {
-                        NoticeCard(tone: .alarm, title: "Couldn't delete", detail: deleteError)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                    }
+                    NoticeCard(tone: .alarm, title: "Couldn't delete", detail: deleteError)
                 }
 
                 Section {
@@ -173,8 +169,7 @@ private struct SceneRow: View {
                 StatusLabel(state: scene.status.dot(percent: scene.processingPct), text: scene.status.shortName)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                Text(details)
-                    .typeStyle(.smallData)
+                details
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
             }
@@ -184,13 +179,16 @@ private struct SceneRow: View {
         .accessibilityHint(scene.isComplete ? "Opens the scene in 3D" : "")
     }
 
-    /// "a1b2c3d4 · 2 days ago · 1.9M splats".
-    private var details: String {
-        var parts = [String(scene.id.prefix(Self.idPrefix)), scene.createdAt.formatted(.relative(presentation: .named))]
+    /// "a1b2c3d4 · 2 days ago · 1.9M splats": the ID in mono, the age and
+    /// size in words, in the system font.
+    private var details: Text {
+        var words = [scene.createdAt.formatted(.relative(presentation: .named))]
         if let count = scene.numGaussians {
-            parts.append("\(count.formatted(.number.notation(.compactName))) splats")
+            words.append("\(count.formatted(.number.notation(.compactName))) splats")
         }
-        return parts.joined(separator: " · ")
+        let id = TypeStyle.smallData.text(String(scene.id.prefix(Self.idPrefix)), at: dynamicTypeSize)
+        let rest = Text(" · " + words.joined(separator: " · ")).font(.caption)
+        return Text("\(id)\(rest)")
     }
 }
 
@@ -308,7 +306,7 @@ final class RecentScenesModel: ObservableObject {
         }
         #endif
         guard let client else {
-            state = .failed(missingAPIKeyMessage)
+            state = .failed("This build has no Splat API key. \(missingAPIKeyMessage)")
             return
         }
 

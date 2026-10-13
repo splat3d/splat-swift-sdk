@@ -4,29 +4,34 @@ import CoreText
 
 // MARK: - Theme: Splat3D's look on iOS
 //
-// Liquid Glass on iOS 26, rounded materials before it. Glass is for the layer
-// that floats over content: buttons, toolbars, and the overlays on the camera
-// and the 3D viewer. Content sits in rounded cards on the grouped ground, as
-// in Settings. One accent, Rinse blue, fills the primary action and marks
-// progress and status; other labels on glass stay monochrome. Hanken Grotesk sets the headlines, Martian Mono the data (scene
-// IDs, numbers, sizes), and the system font everything else.
+// Liquid Glass on iOS 26, bordered buttons and materials before it. Glass is
+// for the layer that floats over content: the action bar pinned at the foot
+// of a screen, the toolbars, and the overlays on the camera. Content is an
+// inset grouped list, as in Settings, so its margins and corners are the
+// system's. One accent, Rinse blue, fills the primary action and marks
+// progress and status; other labels on glass stay monochrome. Hanken
+// Grotesk sets the headlines, Martian Mono the data (scene IDs, numbers,
+// sizes), and the system font everything else.
 //
 //   Palette ─────> the brand's colors, with Increase Contrast variants
 //   TypeStyle ───> .typeStyle(.display): the bundled fonts, Dynamic Type
-//   Card, CardSection, CardDivider, FactRow, NoticeCard ──> content
+//   FactRow, NoticeCard ──> a list's rows and sections
 //   StatusDot, StatusLabel ──> a colored dot and its text
-//   Choice ──────> a segmented control, a 2-column grid at large text
 //   .actionStyle(_:) ──> capsule buttons: primary, secondary, destructive
-//   .glassSurface(in:), GlassGroup ──> controls floating over the picture
+//   .actionBar { } ──> a screen's actions, pinned over the content
+//   MoreMenu ────> a screen's rarer actions, in the toolbar
+//   .glassSurface(in:), GlassGroup ──> readouts and controls over the camera
+//   Choice ──────> a segmented control, a 2-column grid at large text
 //   .darkNavigationBar() ──> the viewer's bar
 //   Mark ────────> mark G·5, for large placeholders
 //
-// Each glass helper switches on the OS once, so views never do:
+// Each helper switches on the OS once, so views never do:
 //
 //   iOS 26+                  iOS 17–25
 //   .glassProminent    <──>  .borderedProminent   primary
 //   .glass             <──>  .bordered            secondary, destructive
-//   .bordered          <──>  .bordered            a button in a card (never glass)
+//   .bordered          <──>  .bordered            a button in a row (never glass)
+//   safeAreaBar        <──>  safeAreaInset on .bar   the action bar
 //   .glassEffect       <──>  .regularMaterial     overlays
 //   GlassEffectContainer <─> the content alone
 
@@ -90,21 +95,12 @@ enum Palette {
 
 // MARK: - Geometry
 
+/// Lists take their margins and corners from the system. These are for what
+/// floats over the camera and the viewer.
 enum Theme {
-    /// Corner radius of a card, and of anything in a card's place.
-    static let cardCorner: CGFloat = 22
-    /// Horizontal page margin.
-    static let margin: CGFloat = 20
-    /// Inset of a card's rows.
-    static let rowInset: CGFloat = 16
-    /// Space above and below a row's text.
-    static let rowPadding: CGFloat = 14
-    /// Smallest comfortable touch target (Apple's Human Interface Guidelines).
-    static let touchTarget: CGFloat = 44
-
-    static var cardShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
-    }
+    /// Space between the screen's edge and an overlay: the system's margin
+    /// on a phone, as the lists have.
+    static let margin: CGFloat = 16
 }
 
 // MARK: - Type
@@ -135,6 +131,22 @@ struct TypeStyle {
     static let data = TypeStyle(face: .mono, size: 14, weight: 400, scalesLike: .subheadline)
     /// Smaller mono values, beside footnote text.
     static let smallData = TypeStyle(face: .mono, size: 12, weight: 400, scalesLike: .caption1)
+
+    /// `string` in this style as Text, to run inside other text: a scene ID
+    /// in mono, then words in the system font.
+    func text(_ string: String, at dynamicTypeSize: DynamicTypeSize) -> Text {
+        let font = uiFont(at: dynamicTypeSize)
+        return Text(string)
+            .font(Font(font))
+            .tracking(tracking * font.pointSize)
+    }
+
+    /// The font, scaled for a Dynamic Type size.
+    fileprivate func uiFont(at dynamicTypeSize: DynamicTypeSize) -> UIFont {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+        let scaled = UIFontMetrics(forTextStyle: scalesLike).scaledValue(for: size, compatibleWith: traits)
+        return Typeface.font(face, size: scaled, weight: weight)
+    }
 }
 
 /// The bundled variable fonts, both under the SIL Open Font License (see
@@ -185,12 +197,10 @@ private struct TypeStyleModifier: ViewModifier {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     func body(content: Content) -> some View {
-        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        let size = UIFontMetrics(forTextStyle: style.scalesLike).scaledValue(for: style.size, compatibleWith: traits)
-        let font = Typeface.font(style.face, size: size, weight: style.weight)
+        let font = style.uiFont(at: dynamicTypeSize)
         return content
             .font(Font(font))
-            .tracking(style.tracking * size)
+            .tracking(style.tracking * font.pointSize)
     }
 }
 
@@ -200,76 +210,40 @@ extension View {
     }
 }
 
-// MARK: - Cards
+// MARK: - Rows
 
-/// A rounded card on the grouped ground. Content, not glass.
-struct Card<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            content
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.card, in: Theme.cardShape)
-    }
+/// How a fact row lays out its label and value.
+enum FactLayout {
+    /// The label on the left, the value on the right: "Splats   1.9M".
+    case sideBySide
+    /// The label, then the value under it, left-aligned: for a sentence,
+    /// which reads badly right-aligned.
+    case stacked
 }
 
-/// A card with an optional header above it and footer below it, as a
-/// grouped list's section has.
-struct CardSection<Content: View>: View {
-    var header: String?
-    var footer: String?
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if let header {
-                Text(header)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, Theme.rowInset)
-            }
-            Card {
-                content
-            }
-            if let footer {
-                Text(footer)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Theme.rowInset)
-            }
-        }
-    }
-}
-
-/// A separator between a card's rows, inset like a list's.
-struct CardDivider: View {
-    var body: some View {
-        Divider()
-            .padding(.leading, Theme.rowInset)
-    }
-}
-
-/// One label and value row in a card, as in Settings: "Splats   1.9M".
+/// One label and value row in a list, as in Settings. A stacked row reads
+/// as in Contacts: a small label over the value.
 struct FactRow<Value: View>: View {
     let label: String
+    var layout = FactLayout.sideBySide
     @ViewBuilder let value: Value
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Group {
-            // At accessibility sizes the value goes under its label: side
-            // by side, both broke mid-word.
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 4) {
+            // At accessibility sizes every row stacks: side by side, label
+            // and value broke mid-word.
+            if layout == .stacked || dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(label)
-                    value
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    value
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(label)
@@ -280,9 +254,7 @@ struct FactRow<Value: View>: View {
                 }
             }
         }
-        .padding(.horizontal, Theme.rowInset)
-        .padding(.vertical, Theme.rowPadding)
-        .frame(minHeight: Theme.touchTarget)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -293,6 +265,8 @@ enum DotState: Equatable {
     case done
     /// Moving: an accent ring that fills with progress, 0...1.
     case running(Double)
+    /// Moving, with no measure of how far: a small spinner.
+    case busy
     /// Not started: grey.
     case waiting
     /// Failed: red.
@@ -313,6 +287,10 @@ struct StatusDot: View {
     /// The least of the ring that shows while running, so 0% still reads
     /// as started.
     private static let minimumArc = 0.12
+    /// The system spinner's side, and how much wider than a dot it shows:
+    /// at a dot's size its spokes don't read.
+    private static let spinnerSide: CGFloat = 20
+    private static let spinnerScale: CGFloat = 1.4
 
     var body: some View {
         dot
@@ -343,6 +321,12 @@ struct StatusDot: View {
                     .rotationEffect(.degrees(-90))
             }
             .padding(Self.ringWidth / 2)
+        case .busy:
+            // A ring with nothing to fill sat still and read as stalled.
+            ProgressView()
+                .tint(Palette.accent)
+                .fixedSize()
+                .scaleEffect(size * Self.spinnerScale / Self.spinnerSide)
         }
     }
 }
@@ -363,7 +347,8 @@ struct StatusLabel: View {
 
 // MARK: - Notices
 
-/// A message in a card: a symbol, a title, a detail, and optional actions.
+/// A message as a section of its own: a symbol, a title, a detail, and
+/// optional actions. An alarm sits on the alarm tint.
 struct NoticeCard<Actions: View>: View {
 
     enum Tone {
@@ -401,26 +386,28 @@ struct NoticeCard<Actions: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: symbol)
-                    .foregroundStyle(symbolColor)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                    Text(detail)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: symbol)
+                        .foregroundStyle(symbolColor)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(.headline)
+                        Text(detail)
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                actions
             }
-            actions
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .contain)
+            // `nil` keeps the system's row background.
+            .listRowBackground(tone == .alarm ? Palette.alarmTint : nil)
         }
-        .padding(Theme.rowInset)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tone == .alarm ? Palette.alarmTint : Palette.card, in: Theme.cardShape)
-        .accessibilityElement(children: .contain)
     }
 }
 
@@ -444,10 +431,10 @@ enum ActionRole {
 
 /// How wide a button is, which says where it sits.
 enum ActionWidth {
-    /// The width of its container: the actions at the end of a screen, or
-    /// over the camera. Glass on iOS 26.
+    /// The width of its container: the actions in a screen's action bar,
+    /// or over the camera. Glass on iOS 26.
     case full
-    /// The width of its label: a button inside a card or on the ground.
+    /// The width of its label: a button in a list row or on the ground.
     /// Content, so bordered on every OS, never glass.
     case fitted
 }
@@ -566,6 +553,76 @@ private struct ActionLook: ViewModifier {
 
     private var tint: Color {
         role == .destructive ? Palette.alarm : Palette.accent
+    }
+}
+
+// MARK: - Action bar
+
+extension View {
+    /// Pins a screen's actions to its foot, over the content, which scrolls
+    /// under them: a bar with the scroll edge effect on iOS 26, and on the
+    /// bar material before it. Holds the primary action and at most one
+    /// secondary; rarer ones go in a ``MoreMenu``.
+    func actionBar<Actions: View>(@ViewBuilder _ actions: () -> Actions) -> some View {
+        modifier(ActionBar(actions: actions()))
+    }
+}
+
+private struct ActionBar<Actions: View>: ViewModifier {
+    let actions: Actions
+
+    private static var spacing: CGFloat { 12 }
+    /// Space above and below the buttons, inside the bar.
+    private static var inset: CGFloat { 8 }
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.safeAreaBar(edge: .bottom) {
+                stack
+                    .padding(.horizontal, Theme.margin)
+                    .padding(.vertical, Self.inset)
+            }
+        } else {
+            content.safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    Divider()
+                    stack
+                        .padding(.horizontal, Theme.margin)
+                        .padding(.vertical, Self.inset * 1.5)
+                }
+                .background(.bar)
+            }
+        }
+    }
+
+    private var stack: some View {
+        VStack(spacing: Self.spacing) {
+            actions
+        }
+    }
+}
+
+// MARK: - More menu
+
+/// A screen's rarer actions, such as opening the web viewer or deleting,
+/// behind the toolbar's ellipsis.
+struct MoreMenu<Items: View>: View {
+    @ViewBuilder let items: Items
+
+    var body: some View {
+        Menu {
+            items
+        } label: {
+            Label("More", systemImage: Self.symbol)
+        }
+    }
+
+    /// On iOS 26 the toolbar draws the circle in glass.
+    private static var symbol: String {
+        if #available(iOS 26, *) {
+            return "ellipsis"
+        }
+        return "ellipsis.circle"
     }
 }
 

@@ -30,10 +30,10 @@ let apiKey: String? = {
     return key
 }()
 
-/// Shown instead of scanning when no key is set.
+/// What to do when no key is set, under a title that says so.
 let missingAPIKeyMessage = """
-    No Splat API key. Copy Examples/SplatCapture/Secrets.example.xcconfig to \
-    Secrets.xcconfig, set SPLAT_API_KEY to your key, and build again.
+    Copy Examples/SplatCapture/Secrets.example.xcconfig to Secrets.xcconfig, \
+    set SPLAT_API_KEY to your key, and build again.
     """
 
 // MARK: - Mesh Material
@@ -279,12 +279,14 @@ struct HomeView: View {
     @ObservedObject var model: CaptureModel
     @Binding var preset: ScenePreset
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
+        // Titled by what it does: the app's name is on the Home Screen.
         Screen(
-            title: "Splat Capture",
+            title: "Capture",
             titleDisplay: .large,
-            headline: "Scan a space in 3D",
-            lead: "Walk slowly around what you want to keep, for 15 to 60 seconds. SplatCapture records video and ARKit camera poses, and Splat3D turns them into a Gaussian splat scene."
+            lead: "Walk slowly around what you want to keep, for 15 to 60 seconds. Splat Capture records video and ARKit camera poses, and Splat3D turns them into a Gaussian splat scene."
         ) {
             if let notice = model.notice {
                 NoticeCard(tone: notice.isError ? .alarm : .done, title: notice.title, detail: notice.detail) {
@@ -297,47 +299,70 @@ struct HomeView: View {
 
             blocker
 
-            CardSection(
-                header: "Preset",
-                footer: preset == .fast ? "The quickest and cheapest: good for trying things out." : "Higher presets take longer and cost more credits."
-            ) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Choice(label: "Preset", options: ScenePreset.allCases, selection: $preset) { $0.title }
-                    Text(preset.summary)
-                        .typeStyle(.data)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(Theme.rowInset)
+            Section {
+                presetRows
+            } header: {
+                Text("Preset")
+            } footer: {
+                Text(preset == .fast ? "The quickest and cheapest: good for trying things out." : "Higher presets take longer and cost more credits.")
             }
 
-            CardSection(header: "Requirements") {
+            Section("Requirements") {
                 FactRow(label: "LiDAR") {
                     StatusLabel(state: model.hasLiDAR ? .done : .failed, text: model.hasLiDAR ? "Ready" : "Not on this device")
                 }
-                CardDivider()
                 FactRow(label: "Camera") {
                     StatusLabel(state: cameraDot, text: cameraText)
                 }
-                CardDivider()
                 FactRow(label: "API key") {
                     StatusLabel(state: model.hasAPIKey ? .done : .failed, text: model.hasAPIKey ? "Set" : "Missing")
                 }
             }
+        } actions: {
+            // Scenes is in the toolbar.
+            Button("Start capture") {
+                Task { await model.startScan() }
+            }
+            .actionStyle(.primary)
+            .disabled(!canCapture)
+        }
+    }
 
-            VStack(spacing: 12) {
-                Button("Start capture") {
-                    Task { await model.startScan() }
-                }
-                .actionStyle(.primary)
-                .disabled(!canCapture)
+    /// The preset control and what the preset means. At accessibility sizes
+    /// the segments truncate, so each preset is a row, the chosen one
+    /// checked, as in Settings.
+    @ViewBuilder
+    private var presetRows: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            presetPicker
+                .pickerStyle(.inline)
+                .labelsHidden()
+            presetSummary
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                presetPicker
+                    .pickerStyle(.segmented)
+                presetSummary
+            }
+            .padding(.vertical, 4)
+        }
+    }
 
-                NavigationLink(value: Route.recentScenes) {
-                    Text("Your scenes")
-                }
-                .actionStyle(.secondary)
+    private var presetPicker: some View {
+        Picker("Preset", selection: $preset) {
+            ForEach(ScenePreset.allCases, id: \.self) { option in
+                Text(option.title)
+                    .tag(option)
             }
         }
+    }
+
+    /// "800 px · 3K iterations · about 3 min".
+    private var presetSummary: some View {
+        Text(preset.summary)
+            .typeStyle(.data)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var cameraDenied: Bool {
@@ -385,7 +410,7 @@ struct HomeView: View {
             NoticeCard(
                 tone: .alarm,
                 title: "Camera access is off",
-                detail: "SplatCapture records video to build the scene. Turn on Camera for SplatCapture in Settings."
+                detail: "Splat Capture records video to build the scene. Turn on Camera for Splat Capture in Settings."
             ) {
                 Button("Open Settings") {
                     guard let settings = URL(string: UIApplication.openSettingsURLString) else {
