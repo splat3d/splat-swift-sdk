@@ -140,6 +140,32 @@ For page-level control, pass each page's `nextCursor` back until it is `nil`. Tr
 | `.quality` | 1600px | 15K | ~25 min |
 | `.ultra` | full-res | 30K | ~45 min |
 
+### Scene details
+
+From API 1.5.0 on, a scene reports its preset, how long training took, when processing ran, and the size of each model file. Older APIs don't send them, so they read `nil`.
+
+```swift
+if let preset = scene.preset {
+    print("Preset: \(preset)")
+}
+if let seconds = scene.trainingTime {
+    print("Trained in \(Int(seconds)) s")
+}
+if let bytes = scene.modelSizes.spz {
+    print("SPZ: \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))")
+}
+```
+
+`trainingTime` is the GPU training stage alone; the whole job runs from `processingStartedAt` to `processingCompletedAt`. `scene.preset` is a `SplatScene.Preset`, which has `.custom`. Create and retrain take a `ScenePreset`, which doesn't.
+
+API 1.3.0 already sends the quality metrics `psnrHoldout` (dB), `ssimHoldout` and `ssim`. The holdout metrics are measured on photos kept out of training, and are `nil` for `.fast`, which holds none out by default. `ssim` and 1.5.0's `psnr` are measured on the training photos, so they run higher. Higher is better for all four.
+
+```swift
+if let holdout = scene.psnrHoldout {
+    print("Holdout PSNR: \(holdout) dB")
+}
+```
+
 ### Retries, Timeouts, and Resuming
 
 Reads and `processScene` retry network failures, 5xx responses and rate limits up to three times with exponential backoff and jitter, waiting out a `Retry-After` of up to 60 seconds. A used-up monthly quota (`quota_exceeded`) and a launch the API failed for good (`upstream_error`) are not retried. Creating, retraining, updating, deleting and cancelling are never retried, because the API cannot deduplicate them yet.
@@ -166,7 +192,7 @@ Any other error after the scene exists ends the run, and no resume can continue 
 |---|---|
 | `SplatError.processingFailed` | The server failed the scene, including a launch it failed, and refunds it. Rarely, a job the stale-job sweep failed still completes, so check `getScene` before starting over. |
 | `SplatError.cancelled` | The scene was cancelled. The server doesn't refund a job that had started. |
-| `SplatError.notFound` | The scene was deleted. A 404 while waiting counts only once a replay of the launch also finds no scene, since the API answers a failed read with 404 too. |
+| `SplatError.notFound` | The scene was deleted. A 404 while waiting counts only once a replay of the launch also finds no scene, since older APIs answered a failed read with 404 too. |
 | `SplatError.uploadFailed` with `.fileDoesNotExist` or `.zeroByteResource` | The capture is missing or empty, so nothing was sent. It's checked before the scene is created too. |
 | `SplatError.requestFailed` with a 4xx | Storage refused the upload URL (403 once it expires, after an hour), or the API refused the launch request itself (400). |
 

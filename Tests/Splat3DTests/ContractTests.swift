@@ -4,13 +4,16 @@ import XCTest
 // MARK: - Contract tests
 //
 // Pins the API contract the SDK was written against. Fixtures/openapi.json is
-// https://api.splat-3d.com/openapi.json as fetched on 2026-10-04; refresh it
-// when the API changes and these tests point at what the SDK must follow.
+// https://api.splat-3d.com/openapi.json for API 1.3.0, as fetched on
+// 2026-10-12; refresh it when the API changes and these tests point at what
+// the SDK must follow.
 //
 //   openapi.json ──> every operationId ──> covered by a SplatClient method
 //        │
-//        └──> response schemas ──> every fixture in APIFixtures.swift
-//                                   (differences listed per fixture below)
+//        ├──> response schemas ──> every fixture in APIFixtures.swift
+//        │                          (differences listed per fixture below)
+//        │
+//        └──> request schemas ──> every body the SDK sends (strict since 1.3.0)
 
 final class ContractTests: XCTestCase {
 
@@ -49,60 +52,57 @@ final class ContractTests: XCTestCase {
 
     static let fixtures: [FixtureCase] = [
         FixtureCase("createScene", Fixture.createScene, "createScene", 201),
-        // getSceneStatus returns holdout metrics the spec omits, and no
-        // training_model although SceneDetail inherits it as required.
-        FixtureCase("completeScene", Fixture.completeScene, "getScene", 200, deviations: [
-            "missing data.training_model",
-            "undeclared data.psnr_holdout",
-            "undeclared data.ssim_holdout",
+        // APIs before 1.3.0 answered the camelCase keys alone.
+        FixtureCase("legacyCreateScene", Fixture.legacyCreateScene, "createScene", 201, deviations: [
+            "missing data.scene_id",
+            "missing data.id",
+            "missing data.upload_url",
         ]),
-        FixtureCase("trainingScene", Fixture.trainingScene, "getScene", 200, deviations: [
-            "missing data.training_model",
-            "undeclared data.psnr_holdout",
-            "undeclared data.ssim_holdout",
+        FixtureCase("completeScene", Fixture.completeScene, "getScene", 200),
+        FixtureCase("trainingScene", Fixture.trainingScene, "getScene", 200),
+        FixtureCase("uploadingScene", Fixture.uploadingScene, "getScene", 200),
+        FixtureCase("estimatingPosesScene", Fixture.estimatingPosesScene, "getScene", 200),
+        FixtureCase("failedLaunchScene", Fixture.failedLaunchScene, "getScene", 200),
+        FixtureCase("sweptScene", Fixture.sweptScene, "getScene", 200),
+        FixtureCase("cancelledScene", Fixture.cancelledScene, "getScene", 200),
+        // API 1.5.0's scene details (gaussian-splatting PR #450), which the
+        // pinned 1.3.0 spec doesn't declare. Empty once the spec is refreshed.
+        FixtureCase("completeSceneWithDetails", Fixture.completeSceneWithDetails, "getScene", 200, deviations: sceneDetailKeys),
+        FixtureCase("completeSceneWithNullDetails", Fixture.completeSceneWithNullDetails, "getScene", 200, deviations: sceneDetailKeys),
+        FixtureCase("completeFastScene", Fixture.completeFastScene, "getScene", 200, deviations: sceneDetailKeys),
+        // The spec requires the metrics; list items before API 1.3.0 lacked them.
+        FixtureCase("completeSceneWithoutMetrics", Fixture.completeSceneWithoutMetrics, "getScene", 200, deviations: [
+            "missing data.ssim",
+            "missing data.psnr_holdout",
+            "missing data.ssim_holdout",
         ]),
-        FixtureCase("uploadingScene", Fixture.uploadingScene, "getScene", 200, deviations: [
-            "missing data.training_model",
-            "undeclared data.psnr_holdout",
-            "undeclared data.ssim_holdout",
-        ]),
-        FixtureCase("estimatingPosesScene", Fixture.estimatingPosesScene, "getScene", 200, deviations: [
-            "missing data.training_model",
-            "undeclared data.psnr_holdout",
-            "undeclared data.ssim_holdout",
-        ]),
-        FixtureCase("failedLaunchScene", Fixture.failedLaunchScene, "getScene", 200, deviations: [
-            "missing data.training_model",
-            "undeclared data.psnr_holdout",
-            "undeclared data.ssim_holdout",
-        ]),
-        FixtureCase("sweptScene", Fixture.sweptScene, "getScene", 200, deviations: [
-            "missing data.training_model",
-            "undeclared data.psnr_holdout",
-            "undeclared data.ssim_holdout",
-        ]),
-        FixtureCase("cancelledScene", Fixture.cancelledScene, "getScene", 200, deviations: [
-            "missing data.training_model",
-            "undeclared data.psnr_holdout",
-            "undeclared data.ssim_holdout",
-        ]),
-        // listScenes never selects ssim, which the spec's Scene requires.
-        FixtureCase("scenePageOne", Fixture.scenePageOne, "listScenes", 200, deviations: ["missing data[].ssim"]),
-        FixtureCase("scenePageTwo", Fixture.scenePageTwo, "listScenes", 200, deviations: ["missing data[].ssim"]),
-        // updateScene answers in getScene's shape, so it differs the same way.
-        FixtureCase("updatedScene", Fixture.updatedScene, "updateScene", 200, deviations: [
-            "missing data.training_model",
-            "undeclared data.psnr_holdout",
-            "undeclared data.ssim_holdout",
-        ]),
+        FixtureCase("scenePageOne", Fixture.scenePageOne, "listScenes", 200),
+        FixtureCase("scenePageTwo", Fixture.scenePageTwo, "listScenes", 200),
+        FixtureCase("updatedScene", Fixture.updatedScene, "updateScene", 200),
         FixtureCase("processAccepted", Fixture.processAccepted, "processScene", 200),
+        FixtureCase("legacyProcessAccepted", Fixture.legacyProcessAccepted, "processScene", 200, deviations: [
+            "missing data.scene_id",
+            "missing data.id",
+        ]),
         FixtureCase("retrainAccepted", Fixture.retrainAccepted, "retrainScene", 200),
+        FixtureCase("legacyRetrainAccepted", Fixture.legacyRetrainAccepted, "retrainScene", 200, deviations: [
+            "missing data.scene_id",
+            "missing data.source_scene_id",
+        ]),
         FixtureCase("cancelAccepted", Fixture.cancelAccepted, "cancelScene", 200),
         FixtureCase("usage", Fixture.usage, "getUsage", 200),
         FixtureCase("unlimitedUsage", Fixture.unlimitedUsage, "getUsage", 200),
+        // The spec still requires the four fields it marks deprecated; an API
+        // that drops them must not break getUsage().
+        FixtureCase("usageWithoutDeprecatedFields", Fixture.usageWithoutDeprecatedFields, "getUsage", 200, deviations: [
+            "missing data.gpu_seconds_used",
+            "missing data.storage_bytes",
+            "missing data.limits.gpu_seconds",
+            "missing data.limits.storage_bytes",
+        ]),
         FixtureCase("unauthorized", Fixture.unauthorized, "getUsage", 401),
         FixtureCase("sceneNotFound", Fixture.sceneNotFound, "getScene", 404),
-        FixtureCase("forbidden", Fixture.forbidden, "deleteScene", 403),
+        FixtureCase("deleteNotFound", Fixture.deleteNotFound, "deleteScene", 404),
         FixtureCase("nothingToUpdate", Fixture.nothingToUpdate, "updateScene", 400),
         FixtureCase("launchConflict", Fixture.launchConflict, "processScene", 409),
         FixtureCase("insufficientCredits", Fixture.insufficientCredits, "processScene", 402),
@@ -121,14 +121,10 @@ final class ContractTests: XCTestCase {
         FixtureCase("noThumbnail", Fixture.noThumbnail, "getSceneThumbnail", 404),
         FixtureCase("internalError", Fixture.internalError, "getScene", 500),
         FixtureCase("tierViolation", Fixture.tierViolation, "createScene", 422),
-        // The quota middleware adds period, limit and field to meta.
-        FixtureCase("quotaExceeded", Fixture.quotaExceeded, "createScene", 429, deviations: [
-            "undeclared meta.period",
-            "undeclared meta.limit",
-            "undeclared meta.field",
-        ]),
-        // Route-validation 400s bypass the error envelope entirely.
-        FixtureCase("validationFailure", Fixture.validationFailure, "listScenes", 400, deviations: [
+        FixtureCase("quotaExceeded", Fixture.quotaExceeded, "createScene", 429),
+        FixtureCase("validationFailure", Fixture.validationFailure, "listScenes", 400),
+        // APIs before 1.1.0 answered route-validation 400s outside the envelope.
+        FixtureCase("legacyValidationFailure", Fixture.legacyValidationFailure, "listScenes", 400, deviations: [
             "missing error.code",
             "missing error.message",
             "missing meta",
@@ -136,27 +132,25 @@ final class ContractTests: XCTestCase {
             "undeclared error.issues",
             "undeclared error.name",
         ]),
-        FixtureCase("unknownFormat", Fixture.unknownFormat, "downloadScene", 400, deviations: [
-            "missing error.code",
-            "missing error.message",
-            "missing meta",
-            "undeclared success",
-            "undeclared error.issues",
-            "undeclared error.name",
-        ]),
+        FixtureCase("unknownFormat", Fixture.unknownFormat, "downloadScene", 400),
+    ]
+
+    /// The scene keys API 1.5.0 adds, as the 1.3.0 spec reads them.
+    static let sceneDetailKeys: Set<String> = [
+        "undeclared data.preset",
+        "undeclared data.psnr",
+        "undeclared data.training_time_seconds",
+        "undeclared data.spz_size_bytes",
+        "undeclared data.sog_size_bytes",
+        "undeclared data.ply_size_bytes",
+        "undeclared data.processing_started_at",
+        "undeclared data.processing_completed_at",
     ]
 
     /// Statuses the fixtures use that the spec does not document for that
-    /// operation. Their bodies are checked against ErrorResponse.
-    static let undocumentedStatuses: Set<String> = [
-        "deleteScene 403",   // another user's scene (deleteScene in api/src/lib/scenes.ts)
-        "processScene 402",  // insufficient credits (processScene)
-        "processScene 429",  // monthly processing quota used up (processScene)
-        "processScene 502",  // a launch the API failed and refunded (failLaunch)
-        "getScene 500",      // any unhandled error (errorHandler)
-        "listScenes 400",    // `limit` outside 1–100 (route validation)
-        "downloadScene 400", // a `format` the route doesn't accept (route validation)
-    ]
+    /// operation. Their bodies are checked against ErrorResponse. API 1.3.0's
+    /// spec documents every one the fixtures use.
+    static let undocumentedStatuses: Set<String> = []
 
     func testSDKCoversEveryOperation() throws {
         XCTAssertEqual(try PinnedSpec.load().operationIDs, Set(Self.coverage.keys))
@@ -179,6 +173,15 @@ final class ContractTests: XCTestCase {
         }
 
         XCTAssertEqual(undocumented, Self.undocumentedStatuses)
+    }
+
+    /// Every preset the SDK sends is one create and /retrain accept.
+    func testPresetsAreSpecValues() throws {
+        let spec = try PinnedSpec.load()
+        let presets = Set(ScenePreset.allCases.map(\.rawValue))
+
+        XCTAssertTrue(presets.isSubset(of: spec.enumValues("CreateSceneBody", property: "preset")))
+        XCTAssertTrue(presets.isSubset(of: spec.enumValues("RetrainSceneBody", property: "preset")))
     }
 
     /// ModelFormat names exactly the formats downloadScene accepts. A format
@@ -232,6 +235,22 @@ struct PinnedSpec {
         let content = response?["content"] as? [String: Any]
         let json = content?["application/json"] as? [String: Any]
         return json?["schema"] as? [String: Any]
+    }
+
+    /// The JSON schema of an operation's request body, or `nil` when it takes none.
+    func requestSchema(_ operationID: String) -> [String: Any]? {
+        let body = operations[operationID]?["requestBody"] as? [String: Any]
+        let content = body?["content"] as? [String: Any]
+        let json = content?["application/json"] as? [String: Any]
+        return json?["schema"] as? [String: Any]
+    }
+
+    /// The values a component schema's property allows, from its `enum`,
+    /// e.g. `["fast", "standard", "quality", "ultra"]` for RetrainSceneBody's `preset`.
+    func enumValues(_ name: String, property: String) -> Set<String> {
+        let properties = resolve(component(name))["properties"] as? [String: Any]
+        let schema = properties?[property] as? [String: Any]
+        return Set(schema?["enum"] as? [String] ?? [])
     }
 
     /// The values an operation's query parameter allows, from its `enum`.
@@ -308,5 +327,50 @@ struct PinnedSpec {
 
     private func join(_ path: String, _ key: String) -> String {
         path.isEmpty ? key : "\(path).\(key)"
+    }
+}
+
+// MARK: - Request bodies
+
+extension SplatClientTests {
+
+    /// Every body the SDK sends, with every optional field set, checked
+    /// against its operation's request schema. Since API 1.3.0 the create,
+    /// PATCH, /process and /retrain bodies answer a key they don't declare
+    /// with 400 `invalid_input`, e.g. `{"presets": "ultra"}`.
+    func testRequestBodiesMatchSpecSchemas() async throws {
+        let spec = try PinnedSpec.load()
+        let processPath = "\(Fixture.scenePath)/process"
+        let retrainPath = "\(Fixture.scenePath)/retrain"
+        MockURLProtocol.stub("/v1/scenes", .json(201, Fixture.createScene))
+        MockURLProtocol.stub(Fixture.scenePath, .json(200, Fixture.updatedScene))
+        MockURLProtocol.stub(processPath, .json(200, Fixture.processAccepted))
+        MockURLProtocol.stub(retrainPath, .json(200, Fixture.retrainAccepted))
+        let client = makeClient()
+
+        _ = try await client.createScene(title: "Kitchen", preset: .ultra)
+        let update = SceneUpdate(title: "Kitchen", address: "123 Main St", description: "North window", isPublic: true)
+        _ = try await client.updateScene(id: Fixture.sceneID, update)
+        _ = try await client.processScene(
+            id: Fixture.sceneID,
+            arkitPoses: (0..<5).map(makePose),
+            lidarPoints: [[0, 0, 0, 255, 255, 255]],
+            enableLOD: true
+        )
+        _ = try await client.retrainScene(id: Fixture.sceneID, preset: .quality)
+
+        let sent = [
+            ("createScene", "/v1/scenes"),
+            ("updateScene", Fixture.scenePath),
+            ("processScene", processPath),
+            ("retrainScene", retrainPath),
+        ]
+        for (operation, path) in sent {
+            let body = try jsonBody(MockURLProtocol.requests(to: path).first)
+            let schema = try XCTUnwrap(spec.requestSchema(operation), operation)
+
+            XCTAssertFalse(body.isEmpty, operation)
+            XCTAssertEqual(spec.differences(body, from: schema), [], operation)
+        }
     }
 }

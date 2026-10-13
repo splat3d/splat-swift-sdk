@@ -549,9 +549,9 @@ final class APIClient: Sendable {
 
     /// Build a `URLRequest` for the given path and method.
     ///
-    /// Query values are percent-encoded strictly: the list cursor is a
-    /// timestamp like `2026-09-28T12:00:00.123456+00:00`, and the API decodes
-    /// a bare `+` in a query string as a space.
+    /// Query values are percent-encoded strictly: a list cursor can be a
+    /// timestamp like `2026-09-28T12:00:00.123456+00:00` (what APIs before
+    /// 1.1.0 sent), and the API decodes a bare `+` in a query string as a space.
     func buildRequest(
         path: String,
         method: HTTPMethod,
