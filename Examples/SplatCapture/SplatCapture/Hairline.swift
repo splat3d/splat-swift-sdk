@@ -686,14 +686,12 @@ extension Hairline {
 
     /// Navigation bars in Hairline type and colors: paper ground, a rule
     /// beneath, Hanken titles.
-    @MainActor
     static func applyNavigationBarAppearance() {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = Palette.UI.paper
         appearance.shadowColor = Palette.UI.rule
-        // Titles follow Dynamic Type, as TypeStyle does in SwiftUI, at the
-        // text size the bars are made with.
+        // Titles follow Dynamic Type, as TypeStyle does in SwiftUI.
         appearance.titleTextAttributes = [
             .font: scaledFont(.navigationTitle, maximum: inlineTitleMaximum),
             .foregroundColor: Palette.UI.ink,
@@ -709,16 +707,12 @@ extension Hairline {
     }
 
     /// A style's font at the reader's text size, at most `maximum` points.
-    /// The size is the app's, not the current traits': those left the
-    /// titles at the default size.
-    @MainActor
     private static func scaledFont(_ style: TypeStyle, maximum: CGFloat? = nil) -> UIFont {
         let font = Typeface.font(style.face, size: style.size, weight: style.weight)
-        let traits = UITraitCollection(preferredContentSizeCategory: UIApplication.shared.preferredContentSizeCategory)
         let metrics = UIFontMetrics(forTextStyle: style.scalesLike)
         guard let maximum else {
-            return metrics.scaledFont(for: font, compatibleWith: traits)
+            return metrics.scaledFont(for: font)
         }
-        return metrics.scaledFont(for: font, maximumPointSize: maximum, compatibleWith: traits)
+        return metrics.scaledFont(for: font, maximumPointSize: maximum)
     }
 }
