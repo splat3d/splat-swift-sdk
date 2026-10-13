@@ -137,6 +137,8 @@ struct SceneViewerScreen: View {
                         .labelStyle(.iconOnly)
                         .foregroundStyle(flipped ? Palette.ink : Palette.graphite)
                         .frame(width: Self.controlSize, height: Self.controlSize)
+                        // The whole square takes the tap, not just the icon.
+                        .contentShape(Hairline.shape)
                         .overlay(Hairline.shape.strokeBorder(flipped ? Palette.ink : Palette.rule, lineWidth: Hairline.rule))
                 }
                 .accessibilityAddTraits(flipped ? .isSelected : [])
@@ -148,6 +150,7 @@ struct SceneViewerScreen: View {
                         .labelStyle(.iconOnly)
                         .foregroundStyle(Palette.ink)
                         .frame(width: Self.controlSize, height: Self.controlSize)
+                        .contentShape(Hairline.shape)
                         .overlay(Hairline.shape.strokeBorder(Palette.rule, lineWidth: Hairline.rule))
                 }
             }
@@ -159,8 +162,9 @@ struct SceneViewerScreen: View {
         .padding()
     }
 
-    /// Side of the square Flip and Reset buttons, as tall as the tabs.
-    private static let controlSize: CGFloat = 36
+    /// Side of the square Flip and Reset buttons: a full touch target, as
+    /// tall as the tabs.
+    private static let controlSize = Hairline.touchTarget
     /// The controls sit over the scene: mostly opaque, never glass.
     private static let panelOpacity = 0.9
 

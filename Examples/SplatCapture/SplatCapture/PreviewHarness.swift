@@ -20,11 +20,14 @@ struct PreviewHarness: View {
         UserDefaults.standard.string(forKey: "SplatPreviewState")
     }
 
-    /// Every state, in screenshot order.
+    /// Every state, in screenshot order. A state ending in
+    /// `-accessibility` is the same state at the largest text size.
     static let states = [
         "home", "home-first-run", "home-no-lidar", "home-camera-off", "home-no-key", "home-deleted",
+        "home-accessibility",
         "scanning", "scanning-limited",
         "saving", "uploading", "launching", "processing", "processing-unknown", "processing-offline",
+        "processing-accessibility",
         "paused-connection", "paused-background", "paused-app-closed", "paused-not-created",
         "paused-credits", "paused-queue", "paused-timeout",
         "failed-processing", "failed-upload-lost", "failed-cancelled", "failed-unusable",
@@ -35,7 +38,19 @@ struct PreviewHarness: View {
 
     let state: String
 
+    private static let accessibilitySuffix = "-accessibility"
+
     var body: some View {
+        if state.hasSuffix(Self.accessibilitySuffix) {
+            screen(String(state.dropLast(Self.accessibilitySuffix.count)))
+                .dynamicTypeSize(.accessibility5)
+        } else {
+            screen(state)
+        }
+    }
+
+    @ViewBuilder
+    private func screen(_ state: String) -> some View {
         switch state {
         case let state where state.hasPrefix("scenes"):
             NavigationStack {

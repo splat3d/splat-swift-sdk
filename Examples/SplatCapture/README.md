@@ -112,6 +112,9 @@ lists them:
 xcrun simctl launch booted com.splat3d.SplatCapture -SplatPreviewState paused-credits
 ```
 
+A state ending in `-accessibility`, such as `home-accessibility`, shows it at
+the largest Dynamic Type size.
+
 Release builds don't contain it.
 
 ## Viewing in 3D

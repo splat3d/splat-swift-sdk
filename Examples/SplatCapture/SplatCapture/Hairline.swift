@@ -112,6 +112,8 @@ struct TypeStyle {
     static let button = TypeStyle(face: .sans, size: 15, weight: 600, scalesLike: .body)
     /// The "splat3D" wordmark beside the mark.
     static let wordmark = TypeStyle(face: .sans, size: 17, weight: 600, scalesLike: .headline, tracking: -0.02)
+    /// A navigation bar's inline title.
+    static let navigationTitle = TypeStyle(face: .sans, size: 17, weight: 600, scalesLike: .headline)
     /// Small uppercase mono: eyebrows, column heads, field names.
     static let label = TypeStyle(face: .mono, size: 11, weight: 500, scalesLike: .caption2, tracking: 0.06, uppercase: true)
     /// Mono values: ids, counts, sizes.
@@ -347,25 +349,45 @@ struct SquareTabs<Value: Hashable>: View {
     @Binding var selection: Value
     let title: (Value) -> String
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private static var spacing: CGFloat { 6 }
+    /// At accessibility sizes a row of four truncates "STANDARD": two a row.
+    private static var accessibilityColumns: Int { 2 }
+    private static var minimumScale: CGFloat { 0.8 }
+    /// "STANDARD" needs 0.73 to fit half a phone's width at the largest size.
+    private static var accessibilityMinimumScale: CGFloat { 0.6 }
+
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(options, id: \.self) { option in
-                let selected = option == selection
-                Button {
-                    selection = option
-                } label: {
-                    Text(title(option))
-                        .typeStyle(.label)
-                        .foregroundStyle(selected ? Palette.ink : Palette.graphite)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                        .contentShape(Hairline.shape)
-                        .overlay(Hairline.shape.strokeBorder(selected ? Palette.ink : Palette.rule, lineWidth: Hairline.rule))
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
+        if dynamicTypeSize.isAccessibilitySize {
+            let column = GridItem(.flexible(), spacing: Self.spacing)
+            LazyVGrid(columns: Array(repeating: column, count: Self.accessibilityColumns), spacing: Self.spacing) {
+                tabs
             }
+        } else {
+            HStack(spacing: Self.spacing) {
+                tabs
+            }
+        }
+    }
+
+    private var tabs: some View {
+        ForEach(options, id: \.self) { option in
+            let selected = option == selection
+            Button {
+                selection = option
+            } label: {
+                Text(title(option))
+                    .typeStyle(.label)
+                    .foregroundStyle(selected ? Palette.ink : Palette.graphite)
+                    .lineLimit(1)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? Self.accessibilityMinimumScale : Self.minimumScale)
+                    .frame(maxWidth: .infinity, minHeight: Hairline.touchTarget)
+                    .contentShape(Hairline.shape)
+                    .overlay(Hairline.shape.strokeBorder(selected ? Palette.ink : Palette.rule, lineWidth: Hairline.rule))
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
         }
     }
 }
@@ -480,25 +502,25 @@ struct APICallBlock: View {
 
     private static let copiedFor: Duration = .milliseconds(1500)
 
+    /// Space between the header's text and the panel's edge.
+    private static let headerInset: CGFloat = 12
+
     var body: some View {
         Panel {
             HStack {
                 MonoLabel("The same thing, in Swift")
                 Spacer()
-                Button(copied ? "Copied" : "Copy") {
-                    UIPasteboard.general.string = code
-                    copied = true
-                    Task {
-                        try? await Task.sleep(for: Self.copiedFor)
-                        copied = false
-                    }
-                }
-                .typeStyle(.label)
-                .foregroundStyle(Palette.graphite)
-                .buttonStyle(.plain)
+                // Holds Copy's place in the row. The button sits over it,
+                // taller than the header, so the header keeps its height.
+                copyLabel
+                    .hidden()
+                    .accessibilityHidden(true)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, Self.headerInset)
             .padding(.vertical, 9)
+            .overlay(alignment: .trailing) {
+                copyButton
+            }
 
             Rule()
 
@@ -511,6 +533,31 @@ struct APICallBlock: View {
                     .padding(12)
             }
         }
+    }
+
+    /// In the accent, which marks what you can act on.
+    private var copyLabel: some View {
+        Text(copied ? "Copied" : "Copy")
+            .typeStyle(.label)
+            .foregroundStyle(Palette.accent)
+    }
+
+    /// At least 44 pt each way: the text alone was the only target.
+    private var copyButton: some View {
+        Button {
+            UIPasteboard.general.string = code
+            copied = true
+            Task {
+                try? await Task.sleep(for: Self.copiedFor)
+                copied = false
+            }
+        } label: {
+            copyLabel
+                .padding(.horizontal, Self.headerInset)
+                .frame(minWidth: Hairline.touchTarget, minHeight: Hairline.touchTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -605,6 +652,10 @@ struct Logo: View {
 // MARK: - UIKit appearance
 
 extension Hairline {
+    /// The largest inline title a 44 pt bar fits: the headline's size at
+    /// the first accessibility size.
+    private static let inlineTitleMaximum: CGFloat = 28
+
     /// Navigation bars in Hairline type and colors: paper ground, a rule
     /// beneath, Hanken titles.
     static func applyNavigationBarAppearance() {
@@ -612,17 +663,28 @@ extension Hairline {
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = Palette.UI.paper
         appearance.shadowColor = Palette.UI.rule
+        // Titles follow Dynamic Type, as TypeStyle does in SwiftUI.
         appearance.titleTextAttributes = [
-            .font: Typeface.font(.sans, size: 17, weight: 600),
+            .font: scaledFont(.navigationTitle, maximum: inlineTitleMaximum),
             .foregroundColor: Palette.UI.ink,
         ]
         appearance.largeTitleTextAttributes = [
-            .font: Typeface.font(.sans, size: 30, weight: 650),
+            .font: scaledFont(.display),
             .foregroundColor: Palette.UI.ink,
         ]
         let bar = UINavigationBar.appearance()
         bar.standardAppearance = appearance
         bar.scrollEdgeAppearance = appearance
         bar.compactAppearance = appearance
+    }
+
+    /// A style's font at the reader's text size, at most `maximum` points.
+    private static func scaledFont(_ style: TypeStyle, maximum: CGFloat? = nil) -> UIFont {
+        let font = Typeface.font(style.face, size: style.size, weight: style.weight)
+        let metrics = UIFontMetrics(forTextStyle: style.scalesLike)
+        guard let maximum else {
+            return metrics.scaledFont(for: font)
+        }
+        return metrics.scaledFont(for: font, maximumPointSize: maximum)
     }
 }

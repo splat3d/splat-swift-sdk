@@ -257,6 +257,8 @@ private struct StepRow: View {
     let state: DotState
     let detail: String
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         HStack(spacing: 10) {
             StatusDot(state: state)
@@ -269,16 +271,27 @@ private struct StepRow: View {
                         .typeStyle(.footnote)
                         .foregroundStyle(Palette.graphite)
                 }
+                // At accessibility sizes there is no room beside the name:
+                // the detail goes under it, whole.
+                if dynamicTypeSize.isAccessibilitySize, !detail.isEmpty {
+                    detailText
+                }
             }
             Spacer(minLength: 8)
-            Text(detail)
-                .typeStyle(.data)
-                .foregroundStyle(Palette.graphite)
-                .lineLimit(1)
+            if !dynamicTypeSize.isAccessibilitySize {
+                detailText
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .accessibilityElement(children: .combine)
+    }
+
+    private var detailText: some View {
+        Text(detail)
+            .typeStyle(.data)
+            .foregroundStyle(Palette.graphite)
     }
 }
 
