@@ -283,7 +283,9 @@ private struct StepRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 10) {
+        // At accessibility sizes the dot sits by the name: centred, it fell
+        // beside whichever line of the stacked note and detail was midway.
+        HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .firstTextBaseline : .center, spacing: 10) {
             StatusDot(state: state)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
