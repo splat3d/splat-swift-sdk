@@ -506,8 +506,9 @@ extension SplatClientTests {
     // MARK: - Waiting through server blips
 
     func testWaitRidesOutKeyAndLookupBlipsOnceTheSceneIsSeen() async throws {
-        // A database blip makes the API answer 401 (its key lookup failed) or
-        // 404 (its scene query failed) for a scene it served a moment ago.
+        // Before gaussian-splatting #323, a database blip made the API answer
+        // 401 (its key lookup failed) or 404 (its scene query failed) for a
+        // scene it served a moment ago.
         let clock = FakeClock()
         MockURLProtocol.stub(
             Fixture.scenePath,

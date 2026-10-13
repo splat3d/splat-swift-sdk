@@ -27,11 +27,12 @@ extension SplatClientTests {
     func testCursorIsSentPercentEncoded() async throws {
         MockURLProtocol.stub("/v1/scenes", .json(200, Fixture.scenePageTwo))
 
-        let page = try await makeClient().listScenePage(cursor: Fixture.pageOneCursor, limit: 2)
+        let page = try await makeClient().listScenePage(cursor: Fixture.legacyCursor, limit: 2)
 
         XCTAssertNil(page.nextCursor)
         XCTAssertFalse(page.hasMore)
-        // A bare "+" would reach the API as a space and break the cursor.
+        // A bare "+" in a timestamp cursor would reach the API as a space and
+        // break the cursor.
         XCTAssertEqual(
             encodedQuery(MockURLProtocol.capturedRequests.first),
             "cursor=2026-09-27T09%3A30%3A00.654321%2B00%3A00&limit=2"
@@ -54,7 +55,7 @@ extension SplatClientTests {
         let queries = MockURLProtocol.capturedRequests.map(encodedQuery)
         XCTAssertEqual(queries, [
             "limit=2",
-            "cursor=2026-09-27T09%3A30%3A00.654321%2B00%3A00&limit=2",
+            "cursor=\(Fixture.pageOneCursor)&limit=2",
         ])
     }
 

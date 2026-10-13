@@ -4,11 +4,12 @@ import Foundation
 //
 // Response bodies the contract tests replay. Each cites where its keys come
 // from: a schema or example in the pinned spec (Fixtures/openapi.json, a copy
-// of https://api.splat-3d.com/openapi.json) or the API source in the
-// gaussian-splatting repo (api/src/..., supabase/migrations/...). Values are
-// examples. ContractTests checks every fixture against its spec schema; where
-// the source and the spec disagree, the fixture follows the source and
-// ContractTests lists the difference.
+// of https://api.splat-3d.com/openapi.json, API 1.3.0) or the API source in
+// the gaussian-splatting repo (api/src/..., supabase/migrations/...). Values
+// are examples. ContractTests checks every fixture against its spec schema;
+// where the source and the spec disagree, the fixture follows the source and
+// ContractTests lists the difference. Fixtures named `legacy…` are answers of
+// APIs before 1.3.0 (or 1.1.0) that the SDK still reads.
 
 enum Fixture {
 
@@ -22,44 +23,74 @@ enum Fixture {
     /// Spec example for ErrorResponse.meta.request_id.
     static let requestID = "550e8400-e29b-41d4-a716-446655440000"
 
-    /// Timestamps as PostgREST serializes `timestamptz`: microseconds and a
-    /// numeric offset. Every `created_at`/`updated_at` comes straight from the
-    /// database (getSceneStatus, listScenes, updateScene in api/src/lib/scenes.ts).
-    static let createdAt = "2026-09-28T12:00:00.123456+00:00"
-    static let updatedAt = "2026-09-28T12:14:03.5+00:00"
+    /// Timestamps as the API writes them since 1.1.0: UTC with milliseconds
+    /// (isoTimestamp in api/src/lib/scenes.ts, for every `created_at` and
+    /// `updated_at`). The database stores microseconds and an offset.
+    static let createdAt = "2026-09-28T12:00:00.123Z"
+    static let updatedAt = "2026-09-28T12:14:03.500Z"
 
-    /// The list cursor is the last row's `created_at` (listScenes in
-    /// api/src/lib/scenes.ts), so it carries a `+`.
-    static let pageOneCursor = "2026-09-27T09:30:00.654321+00:00"
+    /// Timestamps as APIs before 1.1.0 wrote them: PostgREST's stored value,
+    /// up to six fractional digits and a `+00:00` offset.
+    static let legacyCreatedAt = "2026-09-28T12:00:00.123456+00:00"
+    static let legacyUpdatedAt = "2026-09-28T12:14:03.5+00:00"
+
+    /// The list cursor: the last row's stored `created_at`,
+    /// `2026-09-27T09:30:00.654321+00:00`, as unpadded base64url
+    /// (encodeCursor in api/src/lib/scenes.ts). Opaque to clients.
+    static let pageOneCursor = "MjAyNi0wOS0yN1QwOTozMDowMC42NTQzMjErMDA6MDA"
+
+    /// A cursor as APIs before 1.1.0 sent it, the raw timestamp, which
+    /// decodeCursor in api/src/lib/scenes.ts still accepts. It carries a `+`.
+    static let legacyCursor = "2026-09-27T09:30:00.654321+00:00"
 
     // MARK: - Scenes
 
-    /// POST /v1/scenes → 201. Spec: CreateSceneResponse, with its examples.
+    /// POST /v1/scenes → 201: createScene's camelCase keys, then the
+    /// snake_case ones the create route adds (api/src/routes/scenes.ts).
+    /// Spec: CreateSceneResponse, with its examples.
     static let createScene = """
+    {
+        "data": {
+            "sceneId": "a1b2c3d4e5f6",
+            "uploadUrl": "https://r2.dev/upload?...",
+            "scene_id": "a1b2c3d4e5f6",
+            "id": "a1b2c3d4e5f6",
+            "upload_url": "https://r2.dev/upload?..."
+        },
+        "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+    }
+    """
+
+    /// POST /v1/scenes → 201 from APIs before 1.3.0: the camelCase keys alone.
+    static let legacyCreateScene = """
     {
         "data": { "sceneId": "a1b2c3d4e5f6", "uploadUrl": "https://r2.dev/upload?..." },
         "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
     }
     """
 
-    /// GET /v1/scenes/{id} → 200 for a complete scene. Keys: SceneStatusResult
-    /// and getSceneStatus's `complete` branch in api/src/lib/scenes.ts
-    /// (viewer_url, download_url, format). Spec: SceneDetailResponse.
+    /// GET /v1/scenes/{id} → 200 for a complete scene: toPublicScene in
+    /// api/src/lib/scenes.ts, every key present. A complete scene with a SOG
+    /// model gets viewer_url, download_url and format; stage and pct are null
+    /// once a scene stops running. Spec: SceneDetailResponse.
     static let completeScene = """
     {
         "data": {
             "id": "a1b2c3d4e5f6",
             "title": "My living room",
+            "description": null,
             "address": "123 Main St",
             "status": "complete",
+            "training_model": "gsplat",
             "is_public": false,
             "thumbnail_r2_key": "tours/a1b2c3d4e5f6/thumbnail.png",
+            "thumbnail_url": "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/thumbnail",
             "num_gaussians": 1940000,
             "ssim": 0.82,
             "psnr_holdout": 24.28,
             "ssim_holdout": 0.79,
             "processing_stage": null,
-            "processing_pct": 100,
+            "processing_pct": null,
             "processing_error": null,
             "viewer_url": "https://splat-3d.com/tour/a1b2c3d4e5f6",
             "download_url": "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/download",
@@ -72,17 +103,21 @@ enum Fixture {
     }
     """
 
-    /// GET /v1/scenes/{id} → 200 while processing: the processing branch of
-    /// getSceneStatus in api/src/lib/scenes.ts (live stage and percent).
+    /// GET /v1/scenes/{id} → 200 while training: the stored status, the
+    /// pipeline stage (pipeline/progress.py STAGE_ORDER), with live stage and
+    /// percent from getSceneStatus's Modal probe (api/src/lib/scenes.ts).
     static let trainingScene = """
     {
         "data": {
             "id": "a1b2c3d4e5f6",
             "title": "My living room",
+            "description": null,
             "address": null,
-            "status": "processing",
+            "status": "training",
+            "training_model": "gsplat",
             "is_public": false,
             "thumbnail_r2_key": null,
+            "thumbnail_url": null,
             "num_gaussians": null,
             "ssim": null,
             "psnr_holdout": null,
@@ -111,10 +146,13 @@ enum Fixture {
         "data": {
             "id": "a1b2c3d4e5f6",
             "title": "My living room",
+            "description": null,
             "address": null,
             "status": "uploading",
+            "training_model": "gsplat",
             "is_public": false,
             "thumbnail_r2_key": null,
+            "thumbnail_url": null,
             "num_gaussians": null,
             "ssim": null,
             "psnr_holdout": null,
@@ -133,11 +171,11 @@ enum Fixture {
     }
     """
 
-    /// GET /v1/scenes/{id} → 200 when getSceneStatus's live Modal probe
-    /// fails: it returns the raw database status, here the pipeline stage
-    /// estimating_poses (pipeline/progress.py STAGE_ORDER).
+    /// GET /v1/scenes/{id} → 200 while camera poses are solved: the stage
+    /// before training in pipeline/progress.py STAGE_ORDER.
     static let estimatingPosesScene = trainingScene
-        .replacingOccurrences(of: "\"status\": \"processing\"", with: "\"status\": \"estimating_poses\"")
+        .replacingOccurrences(of: "\"status\": \"training\"", with: "\"status\": \"estimating_poses\"")
+        .replacingOccurrences(of: "\"processing_stage\": \"training\"", with: "\"processing_stage\": \"estimating_poses\"")
 
     /// GET /v1/scenes/{id} → 200 after the stale-job sweep failed the scene:
     /// processing_error is FAILED_TIMEOUT_MSG from the sweep in
@@ -147,16 +185,19 @@ enum Fixture {
         "data": {
             "id": "a1b2c3d4e5f6",
             "title": "My living room",
+            "description": null,
             "address": null,
             "status": "failed",
+            "training_model": "gsplat",
             "is_public": false,
             "thumbnail_r2_key": null,
+            "thumbnail_url": null,
             "num_gaussians": null,
             "ssim": null,
             "psnr_holdout": null,
             "ssim_holdout": null,
-            "processing_stage": "training",
-            "processing_pct": 45,
+            "processing_stage": null,
+            "processing_pct": null,
             "processing_error": "Processing timed out — the GPU job did not complete.",
             "viewer_url": null,
             "download_url": null,
@@ -176,46 +217,69 @@ enum Fixture {
         with: "Modal rejected the launch (401)."
     )
 
-    /// GET /v1/scenes/{id} → 200 after cancelScene, which accepts an
-    /// uploading scene and sets status cancelled and processing_error
-    /// "Cancelled by user" (api/src/lib/scenes.ts).
+    /// GET /v1/scenes/{id} → 200 after a cancel, which accepts an uploading
+    /// scene and sets status cancelled and processing_error "Cancelled by
+    /// user" (cancel_scene in
+    /// supabase/migrations/20260929000200_cancel_refund_window.sql).
     static let cancelledScene = uploadingScene
         .replacingOccurrences(of: "\"status\": \"uploading\"", with: "\"status\": \"cancelled\"")
         .replacingOccurrences(of: "\"processing_error\": null", with: "\"processing_error\": \"Cancelled by user\"")
 
-    /// GET /v1/scenes?limit=2 → 200, first of two pages. Item keys: the column
-    /// list listScenes selects; meta: the list route in api/src/routes/scenes.ts
-    /// (next_cursor is the last item's created_at). Spec: SceneListResponse.
+    /// GET /v1/scenes?limit=2 → 200, first of two pages. Items have the shape
+    /// GET answers (toPublicScene); meta: the list route in
+    /// api/src/routes/scenes.ts and listScenes in api/src/lib/scenes.ts, whose
+    /// next_cursor encodes the last row's stored created_at. Spec:
+    /// SceneListResponse.
     static let scenePageOne = """
     {
         "data": [
             {
                 "id": "a1b2c3d4e5f6",
                 "title": "My living room",
+                "description": null,
                 "address": null,
                 "status": "complete",
                 "training_model": "gsplat",
                 "is_public": false,
                 "thumbnail_r2_key": "tours/a1b2c3d4e5f6/thumbnail.png",
+                "thumbnail_url": "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/thumbnail",
                 "num_gaussians": 1940000,
+                "ssim": 0.82,
+                "psnr_holdout": null,
+                "ssim_holdout": null,
                 "processing_stage": null,
-                "processing_pct": 100,
+                "processing_pct": null,
+                "processing_error": null,
+                "viewer_url": "https://splat-3d.com/tour/a1b2c3d4e5f6",
+                "download_url": "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/download",
+                "format": "sog",
+                "lod_meta_url": null,
                 "created_at": "\(createdAt)",
                 "updated_at": "\(updatedAt)"
             },
             {
                 "id": "0f1e2d3c4b5a",
                 "title": "Kitchen",
+                "description": null,
                 "address": null,
                 "status": "training",
                 "training_model": "gsplat",
                 "is_public": false,
                 "thumbnail_r2_key": null,
+                "thumbnail_url": null,
                 "num_gaussians": null,
+                "ssim": null,
+                "psnr_holdout": null,
+                "ssim_holdout": null,
                 "processing_stage": "training",
                 "processing_pct": 45,
-                "created_at": "\(pageOneCursor)",
-                "updated_at": "2026-09-27T09:41:10.2+00:00"
+                "processing_error": null,
+                "viewer_url": null,
+                "download_url": null,
+                "format": null,
+                "lod_meta_url": null,
+                "created_at": "2026-09-27T09:30:00.654Z",
+                "updated_at": "2026-09-27T09:41:10.200Z"
             }
         ],
         "meta": {
@@ -235,16 +299,26 @@ enum Fixture {
             {
                 "id": "9a8b7c6d5e4f",
                 "title": null,
+                "description": null,
                 "address": null,
                 "status": "failed",
                 "training_model": "gsplat",
                 "is_public": false,
                 "thumbnail_r2_key": null,
+                "thumbnail_url": null,
                 "num_gaussians": null,
+                "ssim": null,
+                "psnr_holdout": null,
+                "ssim_holdout": null,
                 "processing_stage": null,
                 "processing_pct": null,
-                "created_at": "2026-09-20T08:00:00+00:00",
-                "updated_at": "2026-09-20T08:31:00+00:00"
+                "processing_error": null,
+                "viewer_url": null,
+                "download_url": null,
+                "format": null,
+                "lod_meta_url": null,
+                "created_at": "2026-09-20T08:00:00.000Z",
+                "updated_at": "2026-09-20T08:31:00.000Z"
             }
         ],
         "meta": {
@@ -257,40 +331,58 @@ enum Fixture {
     """
 
     /// PATCH /v1/scenes/{id} → 200. updateScene answers with toPublicScene,
-    /// the public shape GET serves, every key present (api/src/lib/scenes.ts,
-    /// since gaussian-splatting #320). A complete scene with a SOG model gets
-    /// its viewer and download URLs. Spec: SceneDetailResponse.
+    /// the public shape GET serves (api/src/lib/scenes.ts). Spec:
+    /// SceneDetailResponse.
     static let updatedScene = """
     {
         "data": {
             "id": "a1b2c3d4e5f6",
             "title": "Kitchen",
+            "description": null,
             "address": null,
             "status": "complete",
+            "training_model": "gsplat",
             "is_public": true,
             "thumbnail_r2_key": "tours/a1b2c3d4e5f6/thumbnail.png",
+            "thumbnail_url": "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/thumbnail",
             "num_gaussians": 1940000,
             "ssim": null,
             "psnr_holdout": null,
             "ssim_holdout": null,
             "processing_stage": null,
-            "processing_pct": 100,
+            "processing_pct": null,
             "processing_error": null,
             "viewer_url": "https://splat-3d.com/tour/a1b2c3d4e5f6",
             "download_url": "https://api.splat-3d.com/v1/scenes/a1b2c3d4e5f6/download",
             "format": "sog",
             "lod_meta_url": null,
             "created_at": "\(createdAt)",
-            "updated_at": "2026-09-28T12:20:00.5+00:00"
+            "updated_at": "2026-09-28T12:20:00.500Z"
         },
         "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
     }
     """
 
     /// POST /v1/scenes/{id}/process → 200. The saved launch response built by
-    /// claim_scene_launch (supabase/migrations/20260928120000_atomic_scene_launches.sql).
-    /// Spec: ProcessSceneResponse.
+    /// claim_scene_launch (supabase/migrations/20261010200000_launch_running_cap.sql),
+    /// then the snake_case keys the process route adds, to replays too
+    /// (api/src/routes/scenes.ts). Spec: ProcessSceneResponse.
     static let processAccepted = """
+    {
+        "data": {
+            "status": "processing",
+            "sceneId": "a1b2c3d4e5f6",
+            "message": "Processing started. This typically takes 7-15 minutes.",
+            "scene_id": "a1b2c3d4e5f6",
+            "id": "a1b2c3d4e5f6"
+        },
+        "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+    }
+    """
+
+    /// POST /v1/scenes/{id}/process → 200 from APIs before 1.3.0: the saved
+    /// launch response alone.
+    static let legacyProcessAccepted = """
     {
         "data": {
             "status": "processing",
@@ -301,9 +393,26 @@ enum Fixture {
     }
     """
 
-    /// POST /v1/scenes/{id}/retrain → 200. `id` is the NEW scene (retrainScene
-    /// in api/src/lib/scenes.ts). Spec: RetrainSceneResponse.
+    /// POST /v1/scenes/{id}/retrain → 200. `id` and `scene_id` are the NEW
+    /// scene, `source_scene_id` the one retrained (retrainScene in
+    /// api/src/lib/scenes.ts, and the retrain route in api/src/routes/scenes.ts).
+    /// Spec: RetrainSceneResponse.
     static let retrainAccepted = """
+    {
+        "data": {
+            "id": "0f1e2d3c4b5a",
+            "source_scene_id": "a1b2c3d4e5f6",
+            "retraining": true,
+            "quality_tier": "pro",
+            "scene_id": "0f1e2d3c4b5a"
+        },
+        "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+    }
+    """
+
+    /// POST /v1/scenes/{id}/retrain → 200 from APIs before 1.3.0: `id` alone
+    /// names the new scene.
+    static let legacyRetrainAccepted = """
     {
         "data": { "id": "0f1e2d3c4b5a", "retraining": true, "quality_tier": "pro" },
         "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
@@ -322,15 +431,16 @@ enum Fixture {
 
     // MARK: - Usage
 
-    /// GET /v1/usage → 200. Spec: UsageResponse, with UsageData's examples.
+    /// GET /v1/usage → 200. Spec: UsageResponse, with UsageData's examples
+    /// (gpu_seconds_used and storage_bytes are deprecated and read 0).
     static let usage = """
     {
         "data": {
             "period": "2026-04",
             "scenes_created": 3,
             "scenes_processed": 2,
-            "gpu_seconds_used": 450,
-            "storage_bytes": 1073741824,
+            "gpu_seconds_used": 0,
+            "storage_bytes": 0,
             "limits": {
                 "scenes_created": 100,
                 "scenes_processed": 100,
@@ -363,6 +473,21 @@ enum Fixture {
     }
     """
 
+    /// GET /v1/usage → 200 without the four fields UsageData marks
+    /// `deprecated: true` (gpu_seconds_used, storage_bytes, limits.gpu_seconds,
+    /// limits.storage_bytes): the answer once an API removes them.
+    static let usageWithoutDeprecatedFields = """
+    {
+        "data": {
+            "period": "2026-10",
+            "scenes_created": 3,
+            "scenes_processed": 2,
+            "limits": { "scenes_created": 100, "scenes_processed": 100 }
+        },
+        "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+    }
+    """
+
     // MARK: - Errors
 
     /// The v1 error envelope (errorHandler in api/src/middleware/error-handler.ts;
@@ -384,8 +509,9 @@ enum Fixture {
     /// ErrorResponse example.
     static let sceneNotFound = error("not_found", "Scene not found.")
 
-    /// 403 from deleteScene for another user's scene (api/src/lib/scenes.ts).
-    static let forbidden = error("forbidden", "You do not own this scene.")
+    /// 404 from deleteScene for a scene another account owns: the same body
+    /// as an unknown ID (api/src/lib/scenes.ts). It was a 403 before 1.3.0.
+    static let deleteNotFound = sceneNotFound
 
     /// 400 from updateScene when nothing is set (api/src/lib/scenes.ts).
     static let nothingToUpdate = error("invalid_input", "No valid fields to update.")
@@ -405,14 +531,26 @@ enum Fixture {
 
     /// 503 from processScene when the launch reservation can't be confirmed
     /// (api/src/lib/scenes.ts); the API asks for the same request again.
+    /// Its code was internal_error before 1.3.0.
     static let launchUnconfirmed = error(
-        "internal_error",
+        "service_unavailable",
         "Unable to confirm the launch reservation. Retry the same request."
     )
 
     /// 429 from processScene when the monthly processing quota is used up
-    /// (the claim's quota_exceeded outcome in api/src/lib/scenes.ts).
-    static let processQuotaExceeded = error("quota_exceeded", "Monthly scene processing limit reached.")
+    /// (the claim's quota_exceeded outcome in api/src/lib/scenes.ts), its
+    /// meta naming the period, limit and field.
+    static let processQuotaExceeded = """
+    {
+        "error": { "code": "quota_exceeded", "message": "Monthly scene processing limit reached." },
+        "meta": {
+            "request_id": "550e8400-e29b-41d4-a716-446655440000",
+            "period": "2026-09",
+            "limit": 10,
+            "field": "scenes_processed"
+        }
+    }
+    """
 
     /// 502 from a launch the API claimed and then failed for good: Modal
     /// rejected it, so failLaunch refunded it, failed the scene and stored
@@ -420,13 +558,13 @@ enum Fixture {
     /// fail_scene_launch in supabase/migrations/20260928120000_atomic_scene_launches.sql).
     static let launchRejected = error("upstream_error", "Modal rejected the launch (401).")
 
-    /// 400 from processScene when the source isn't in storage. It checks
-    /// (a HEAD on the scene's source key) before claiming or charging
-    /// anything (api/src/lib/scenes.ts).
+    /// 400 from processScene when the source isn't in storage, as APIs before
+    /// gaussian-splatting #323 coded it. It checks (a HEAD on the scene's
+    /// source key) before claiming or charging anything (api/src/lib/scenes.ts).
     static let sourceMissing = error("invalid_input", "Source file not found. Please try uploading again.")
 
     /// The same 400 with its own code, source_missing, from
-    /// gaussian-splatting #323 (api/src/lib/scenes.ts at 23577c9).
+    /// gaussian-splatting #323 (api/src/lib/scenes.ts), as 1.3.0 sends it.
     static let sourceMissingCoded = error("source_missing", "Source file not found. Please try uploading again.")
 
     /// 400 from processScene when two poses name the same frame
@@ -438,8 +576,9 @@ enum Fixture {
     /// web app launched (api/src/lib/scenes.ts).
     static let alreadyProcessing = error("conflict", "Scene is already being processed.")
 
-    /// 401 when the API-key lookup itself fails, e.g. a database blip:
-    /// requireApiKeyAuth answers any lookup error this way (api/src/middleware/auth.ts).
+    /// 401 for a key the API doesn't know (requireApiKeyAuth in
+    /// api/src/middleware/auth.ts). Before gaussian-splatting #323 a failed
+    /// lookup, e.g. a database blip, answered it too; now that is a 503.
     static let keyLookupFailed = error("unauthorized", "Invalid or expired API key.")
 
     /// 402 from processScene's credit reservation (api/src/lib/scenes.ts).
@@ -501,18 +640,40 @@ enum Fixture {
     }
     """
 
-    /// 400 for a request that fails route schema validation. Not the error
-    /// envelope: @hono/zod-validator 0.7.6 (no defaultHook in api/src) returns
+    /// 400 for a request that fails route schema validation, here `limit=0`
+    /// on the list: validationHook (api/src/middleware/validation-hook.ts)
+    /// puts one `{field, message}` per zod issue in `details` and joins them
+    /// into `message`. Generated with the API's zod 3.25.76.
+    static let validationFailure = """
+    {
+        "error": {
+            "code": "invalid_input",
+            "message": "limit: Number must be greater than or equal to 1",
+            "details": [{ "field": "limit", "message": "Number must be greater than or equal to 1" }]
+        },
+        "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+    }
+    """
+
+    /// The same failure from APIs before 1.1.0, outside the error envelope:
+    /// @hono/zod-validator 0.7.6 with no defaultHook returned
     /// `c.json({ success: false, error: ZodError }, 400)`. Generated with the
     /// API's zod 3.25.76 against listScenesQuerySchema for `limit=0`.
-    static let validationFailure = """
+    static let legacyValidationFailure = """
     {"success":false,"error":{"issues":[{"code":"too_small","minimum":1,"type":"number","inclusive":true,"exact":false,"message":"Number must be greater than or equal to 1","path":["limit"]}],"name":"ZodError"}}
     """
 
     /// 400 from downloadScene for `format=glb`, a format the route doesn't
     /// accept (the pinned spec lists sog, ply and spz). The same validation
-    /// failure as above, generated with zod 3.25.76 against downloadQuerySchema.
+    /// failure as ``validationFailure``, generated with zod 3.25.76.
     static let unknownFormat = """
-    {"success":false,"error":{"issues":[{"received":"glb","code":"invalid_enum_value","options":["sog","ply","spz"],"path":["format"],"message":"Invalid enum value. Expected 'sog' | 'ply' | 'spz', received 'glb'"}],"name":"ZodError"}}
+    {
+        "error": {
+            "code": "invalid_input",
+            "message": "format: Invalid enum value. Expected 'sog' | 'ply' | 'spz', received 'glb'",
+            "details": [{ "field": "format", "message": "Invalid enum value. Expected 'sog' | 'ply' | 'spz', received 'glb'" }]
+        },
+        "meta": { "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+    }
     """
 }

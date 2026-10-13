@@ -2,10 +2,44 @@ import Foundation
 
 // MARK: - Create Scene Response (internal)
 
-/// Response from `POST /v1/scenes`.
+/// Response from `POST /v1/scenes`. API 1.3.0 answers `scene_id` and
+/// `upload_url` beside the camelCase `sceneId` and `uploadUrl`, which it
+/// deprecates and older versions send alone. The snake_case keys win.
 struct CreateSceneData: Decodable {
     let sceneId: String
     let uploadUrl: URL
+
+    enum CodingKeys: String, CodingKey {
+        case sceneID = "scene_id"
+        case uploadURL = "upload_url"
+        case legacySceneID = "sceneId"
+        case legacyUploadURL = "uploadUrl"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sceneId = try container.decode(String.self, forKey: .sceneID, legacyKey: .legacySceneID)
+        uploadUrl = try container.decode(URL.self, forKey: .uploadURL, legacyKey: .legacyUploadURL)
+    }
+}
+
+// MARK: - Renamed response keys (internal)
+
+private extension KeyedDecodingContainer {
+
+    /// The value under `key`, or under `legacyKey` when a response from an
+    /// older API lacks `key`. With neither, the error names `key`.
+    ///
+    /// `{"scene_id": "a", "sceneId": "b"}` reads `"a"`; `{"sceneId": "b"}` reads `"b"`.
+    func decode<T: Decodable>(_ type: T.Type, forKey key: Key, legacyKey: Key) throws -> T {
+        if let value = try decodeIfPresent(type, forKey: key) {
+            return value
+        }
+        guard contains(legacyKey) else {
+            return try decode(type, forKey: key)
+        }
+        return try decode(type, forKey: legacyKey)
+    }
 }
 
 // MARK: - Update Scene Request Body (internal)
@@ -33,45 +67,54 @@ struct UpdateSceneBody: Encodable {
 
 // MARK: - Retrain Scene Request Body (internal)
 
-/// Request body for `POST /v1/scenes/{id}/retrain`.
+/// Request body for `POST /v1/scenes/{id}/retrain`: the tier in create's
+/// preset names, e.g. `{"preset": "quality"}`. API 1.3.0 takes `preset`
+/// beside the billing-named `quality_tier` (where `quality` is `pro`), and
+/// prices the retrain as the tier it names.
 struct RetrainSceneBody: Encodable {
-    let qualityTier: String
-
-    enum CodingKeys: String, CodingKey {
-        case qualityTier = "quality_tier"
-    }
-
-    /// The retrain endpoint names tiers after billing tiers, where the
-    /// `quality` preset is called `pro` (TIER_TABLE in the API's
-    /// packages/core/src/tiers.ts: `pro: { preset: "quality" }`).
-    init(preset: ScenePreset) {
-        switch preset {
-        case .fast:
-            qualityTier = "fast"
-        case .standard:
-            qualityTier = "standard"
-        case .quality:
-            qualityTier = "pro"
-        case .ultra:
-            qualityTier = "ultra"
-        }
-    }
+    let preset: ScenePreset
 }
 
 // MARK: - Retrain Scene Response (internal)
 
-/// Response from `POST /v1/scenes/{id}/retrain`. `id` is the new scene.
+/// Response from `POST /v1/scenes/{id}/retrain`. `scene_id` (API 1.3.0) and
+/// `id` both name the new scene; `source_scene_id` is the one retrained.
 struct RetrainSceneData: Decodable {
     let id: String
+
+    enum CodingKeys: String, CodingKey {
+        case sceneID = "scene_id"
+        case legacyID = "id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .sceneID, legacyKey: .legacyID)
+    }
 }
 
 // MARK: - Process Scene Response (internal)
 
-/// Response from `POST /v1/scenes/{id}/process`.
+/// Response from `POST /v1/scenes/{id}/process`. API 1.3.0 answers
+/// `scene_id` beside the camelCase `sceneId`, which it deprecates and older
+/// versions send alone. `scene_id` wins.
 struct ProcessSceneData: Decodable {
     let status: String
     let sceneId: String
     let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case status, message
+        case sceneID = "scene_id"
+        case legacySceneID = "sceneId"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(String.self, forKey: .status)
+        sceneId = try container.decode(String.self, forKey: .sceneID, legacyKey: .legacySceneID)
+        message = try container.decode(String.self, forKey: .message)
+    }
 }
 
 // MARK: - Process Scene Request Body (internal)
@@ -509,9 +552,8 @@ public final class SplatClient: Sendable {
     /// - Parameter id: The scene ID.
     /// - Throws: ``SplatError/notFound(_:)`` if the scene doesn't exist.
     ///   ``SplatError/requestFailed(_:)`` with code `conflict` if the scene
-    ///   can't be cancelled in its current state: it has finished, or it is in
-    ///   a preview stage (``SceneStatus/previewExtracting``,
-    ///   ``SceneStatus/previewGenerating``, ``SceneStatus/previewCompressing``).
+    ///   has finished: ``SceneStatus/complete``, ``SceneStatus/failed`` or
+    ///   ``SceneStatus/cancelled``.
     public func cancelScene(id: String) async throws {
         try await api.requestVoid(path: APIPath.scene(id, .cancel), method: .post)
     }
@@ -586,11 +628,19 @@ public final class SplatClient: Sendable {
 
     /// Delete a scene and all associated files.
     ///
-    /// This permanently removes the scene, its video, 3D model, and thumbnail.
-    /// This action cannot be undone.
+    /// The delete is soft: the API answers 404 for the scene from then on, and
+    /// removes its video, 3D model and thumbnail 24 to 48 hours later. It
+    /// can't be undone. A scene still uploading or processing is cancelled
+    /// first, under the API's cancel refund rules.
+    ///
+    /// The SDK never retries a delete. On a 409 or 503, call it again.
     ///
     /// - Parameter id: The scene ID to delete.
-    /// - Throws: ``SplatError/notFound(_:)`` if the scene doesn't exist.
+    /// - Throws: ``SplatError/notFound(_:)`` if the scene doesn't exist, is
+    ///   already deleted, or belongs to another account.
+    ///   ``SplatError/requestFailed(_:)`` with code `conflict` (409) if the
+    ///   scene's status changed while it was being deleted, or
+    ///   `service_unavailable` (503): try again.
     public func deleteScene(id: String) async throws {
         try await api.requestVoid(path: APIPath.scene(id), method: .delete)
     }
@@ -600,10 +650,11 @@ public final class SplatClient: Sendable {
     /// Poll a scene until processing finishes.
     ///
     /// Use it to pick up a launched scene, e.g. after an app restart, without
-    /// paying for another job. Network failures, 5xx and rate limits don't
-    /// end the wait, since they say nothing about the job; once the scene has
-    /// been read, neither does a short run of 401 or 404, which the API also
-    /// returns when its database blips. After the deadline it looks once more.
+    /// paying for another job. Network failures, 5xx (including the 503 the
+    /// API answers when its database fails) and rate limits don't end the
+    /// wait, since they say nothing about the job. Once the scene has been
+    /// read, neither does a short run of 401 or 404, which older APIs
+    /// answered a database failure with. After the deadline it looks once more.
     ///
     /// - Parameters:
     ///   - id: The scene ID.
@@ -659,7 +710,7 @@ public final class SplatClient: Sendable {
     ///   refund a job that had started.
     /// - ``SplatError/notFound(_:)``: the scene was deleted. A 404 while
     ///   waiting counts only once a replay of the launch also finds no scene,
-    ///   since the API answers a failed read with 404 too.
+    ///   since older APIs answered a failed read with 404 too.
     /// - ``SplatError/uploadFailed(_:)`` with a `URLError` such as
     ///   `.fileDoesNotExist` or `.zeroByteResource`: the capture is missing
     ///   or empty, so nothing was sent. It is checked before the scene is
@@ -851,7 +902,7 @@ public final class SplatClient: Sendable {
         } catch let error as SplatError where error.isFinal {
             throw error
         } catch SplatError.notFound(let refusal) {
-            // The API answers a failed scene read with 404 too, so a read's
+            // Older APIs answered a failed scene read with 404 too, so a read's
             // 404 ends the run only once a launch replay confirms it.
             guard await isGone(run) else {
                 throw stopped(run, at: phase, by: SplatError.notFound(refusal))
