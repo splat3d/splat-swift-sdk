@@ -236,7 +236,8 @@ struct CaptureRoot: View {
                 }
             }
         }
-        .onChange(of: scenePhase) { _, phase in
+        // initial: a launch that finds a run the app was killed in resumes it.
+        .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {
                 model.appBecameActive()
             }

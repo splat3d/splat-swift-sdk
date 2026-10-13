@@ -18,8 +18,8 @@ import Splat3D
 // it stops before the outcome is known it throws .interrupted, and Resume
 // hands that to client.resume(_:), which never pays twice. The capture and
 // scene ID are on disk (CaptureStore), so after the app is killed the run
-// comes back paused, and Resume calls client.resume(sceneID:preset:…). A run
-// that had failed comes back failed.
+// picks up by itself on the next launch, through
+// client.resume(sceneID:preset:…). A run that had failed comes back failed.
 //
 // Leaving the app asks iOS for background time. When it runs out the run is
 // cancelled, which the SDK reports as an interruption, and it resumes by
@@ -210,8 +210,9 @@ final class CaptureModel: ObservableObject {
         let store = CaptureStore.live
         let run = store.loadRun()
 
-        // A capture on disk means the app was killed mid-run: offer Resume,
-        // unless the run had already failed, which shows again as it was.
+        // A capture on disk means the app was killed mid-run: it resumes once
+        // the app is active, unless the run had already failed, which shows
+        // again as it was.
         let state: CaptureState = run.map { run -> CaptureState in
             guard let failure = run.failure else {
                 return .paused(PausedRun(sceneID: run.sceneID, phase: nil, cause: .appClosed, interruption: nil))
@@ -254,7 +255,8 @@ final class CaptureModel: ObservableObject {
     // MARK: - App lifecycle
 
     /// The app is in front again: Settings may have changed camera access,
-    /// and a run iOS stopped in the background picks up.
+    /// and a run iOS stopped in the background, or the app was killed in,
+    /// picks up.
     func appBecameActive() {
         #if DEBUG
         // A preview keeps the camera access it was given.
@@ -263,7 +265,7 @@ final class CaptureModel: ObservableObject {
         }
         #endif
         cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
-        guard case .paused(let paused) = state, paused.cause == .backgrounded else {
+        guard case .paused(let paused) = state, paused.cause == .backgrounded || paused.cause == .appClosed else {
             return
         }
         resume()
@@ -370,28 +372,34 @@ final class CaptureModel: ObservableObject {
         // A new run: no scene yet, and no failure to come back to.
         try? store.saveSceneID(nil)
         try? store.saveFailure(nil)
-        let video = store.videoURL
 
         perform(from: RunProgress(step: .uploading)) { [weak self] client in
-            // MARK: - Splat3D Integration: Upload and process
-            // createAndProcess creates the scene, uploads the video, launches
-            // processing and polls until it finishes. The poses and points
-            // come back from disk, so a resume after a relaunch sends exactly
-            // the same launch.
-            try await client.createAndProcess(
-                videoURL: video,
-                title: run.title,
-                preset: run.preset.params,
-                arkitPoses: launch.poses,
-                lidarPoints: launch.lidarPoints,
-                onProgress: { status, percent in
-                    self?.report(status, percent)
-                },
-                onSceneCreated: { id in
-                    self?.sceneCreated(id)
-                }
-            )
+            guard let self else {
+                throw CancellationError()
+            }
+            return try await self.uploadAndProcess(run, launch, with: client)
         }
+    }
+
+    private func uploadAndProcess(_ run: CaptureStore.Run, _ launch: CaptureStore.Launch, with client: SplatClient) async throws -> SplatScene {
+        // MARK: - Splat3D Integration: Upload and process
+        // createAndProcess creates the scene, uploads the video, launches
+        // processing and polls until it finishes. The poses and points
+        // come back from disk, so a resume after a relaunch sends exactly
+        // the same launch.
+        try await client.createAndProcess(
+            videoURL: store.videoURL,
+            title: run.title,
+            preset: run.preset.params,
+            arkitPoses: launch.poses,
+            lidarPoints: launch.lidarPoints,
+            onProgress: { [weak self] status, percent in
+                self?.report(status, percent)
+            },
+            onSceneCreated: { [weak self] id in
+                self?.sceneCreated(id)
+            }
+        )
     }
 
     /// Continue a paused run without paying twice.
@@ -421,22 +429,48 @@ final class CaptureModel: ObservableObject {
 
         // After a relaunch, rebuild the launch from disk. resume(sceneID:…)
         // replays a launch that went through, and can't upload: a video that
-        // never landed ends in source_missing, and the failed screen offers
-        // Upload again.
+        // never landed ends in source_missing, before anything is charged.
+        // Then the capture goes up to a new scene, as Upload again does.
         guard let run = store.loadRun(), let launch = try? store.loadLaunch() else {
             fail(Self.captureUnreadable(sceneID: sceneID))
             return
         }
         perform(from: RunProgress(step: .launching, sceneID: sceneID)) { [weak self] client in
-            try await client.resume(
-                sceneID: sceneID,
-                preset: run.preset.params,
-                arkitPoses: launch.poses,
-                lidarPoints: launch.lidarPoints
-            ) { status, percent in
-                self?.report(status, percent)
+            do {
+                return try await client.resume(
+                    sceneID: sceneID,
+                    preset: run.preset.params,
+                    arkitPoses: launch.poses,
+                    lidarPoints: launch.lidarPoints
+                ) { status, percent in
+                    self?.report(status, percent)
+                }
+            } catch {
+                guard let self, Self.videoNeverLanded(error, sceneID: sceneID) else {
+                    throw error
+                }
+                try Task.checkCancellation()
+                self.deleteUnlaunched(sceneID)
+                self.forgetScene()
+                return try await self.uploadAndProcess(run, launch, with: client)
             }
         }
+    }
+
+    /// Whether a run stopped because its video never reached the scene, so
+    /// the launch was refused before anything was charged.
+    private static func videoNeverLanded(_ error: Error, sceneID: String) -> Bool {
+        guard case .failed(let failed) = RunOutcome(error, sceneID: sceneID, cancelledBy: .app) else {
+            return false
+        }
+        return failed.retry == .uploadAgain
+    }
+
+    /// Drop the running scene, before its capture goes up to a new one.
+    private func forgetScene() {
+        sceneID = nil
+        try? store.saveSceneID(nil)
+        updateProgress { $0 = RunProgress(step: .uploading) }
     }
 
     /// The video never reached the scene: delete it, and upload the saved

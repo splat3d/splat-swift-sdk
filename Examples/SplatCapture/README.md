@@ -89,8 +89,8 @@ raw error:
 |---|---|---|
 | Network lost mid-upload or mid-launch | **Connection lost**, what was charged (nothing, or at most once). Resume is off while offline | Resumes by itself when the network is back, or **Resume**: `client.resume(interruption)` |
 | App left mid-run | It asks iOS for background time; when that runs out, the run pauses | Resumes by itself when the app is back |
-| App killed mid-run | On the next launch, **A capture is waiting** | **Resume**: `client.resume(sceneID:preset:arkitPoses:lidarPoints:)` with the saved capture |
-| App killed mid-upload | Resume gets `source_missing`: **The upload didn't finish**, nothing charged | **Upload again**: a new scene from the saved capture; the old one is deleted |
+| App killed mid-run | On the next launch, the run picks up | Resumes by itself: `client.resume(sceneID:preset:arkitPoses:lidarPoints:)` with the saved capture |
+| App killed mid-upload | Resume gets `source_missing`, before anything is charged | Uploads by itself to a new scene from the saved capture; the old one is deleted |
 | Not enough credits | **Not enough credits**, with the API's message | **Add credits** (dashboard), then **Resume** |
 | Too many scenes processing | The API's message | **Resume** later |
 | Monthly limit reached | The API's message | **Open billing** to change the plan, or **Resume** next month |
