@@ -71,11 +71,8 @@ struct RecentScenesView: View {
 
         case .loaded(let scenes) where scenes.isEmpty:
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    NoticeBox(tone: .neutral, title: "No scenes yet", detail: "Capture one, or create one at splat-3d.com, and it shows here.")
-                    APICallBlock(code: Self.listCall)
-                }
-                .padding(Hairline.margin)
+                NoticeBox(tone: .neutral, title: "No scenes yet", detail: "Capture one, or create one at splat-3d.com, and it shows here.")
+                    .padding(Hairline.margin)
             }
 
         case .loaded(let scenes):
@@ -104,11 +101,6 @@ struct RecentScenesView: View {
                 ForEach(scenes) { scene in
                     row(scene)
                 }
-
-                APICallBlock(code: Self.listCall)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Palette.paper)
-                    .padding(.top, 12)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -146,12 +138,6 @@ struct RecentScenesView: View {
                 }
             }
     }
-
-    private static let listCall = """
-        let page = try await client
-            .listScenePage(limit: 100)
-        try await client.deleteScene(id: id)
-        """
 }
 
 /// One scene: thumbnail, title, id and age, and its status.

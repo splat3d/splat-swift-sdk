@@ -244,11 +244,10 @@ struct CaptureRoot: View {
         case .idle, .scanning:
             HomeView(model: model, preset: $preset)
         case .running(let progress):
-            RunningView(progress: progress, preset: model.runPreset, thumbnail: model.thumbnail, isOnline: connectivity.isOnline)
+            RunningView(progress: progress, thumbnail: model.thumbnail, isOnline: connectivity.isOnline)
         case .paused(let paused):
             PausedView(
                 paused: paused,
-                preset: model.runPreset,
                 isOnline: connectivity.isOnline,
                 onResume: { model.resume() },
                 onDiscard: { model.discard() }
@@ -339,13 +338,6 @@ struct HomeView: View {
                 }
                 .buttonStyle(.ghost)
             }
-
-            APICallBlock(code: """
-                let scanner = SplatScanner()
-                try await scanner.start()
-                // … walk around the scene …
-                let capture = try await scanner.stop()
-                """)
         }
     }
 

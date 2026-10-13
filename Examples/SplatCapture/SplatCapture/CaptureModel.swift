@@ -150,8 +150,6 @@ final class CaptureModel: ObservableObject {
     @Published private(set) var isDeleting = false
     /// Why the last delete failed, shown on the complete screen.
     @Published var deleteError: String?
-    /// The preset of the run on screen, for its SDK snippet.
-    @Published private(set) var runPreset: ScenePreset
 
     // Scanning
     @Published private(set) var poseCount = 0
@@ -228,8 +226,7 @@ final class CaptureModel: ObservableObject {
             cameraAccess: AVCaptureDevice.authorizationStatus(for: .video),
             store: store,
             transfers: transfers,
-            state: state,
-            preset: run?.preset ?? .fast
+            state: state
         )
     }
 
@@ -240,8 +237,7 @@ final class CaptureModel: ObservableObject {
         cameraAccess: AVAuthorizationStatus,
         store: CaptureStore,
         transfers: TransferWatcher,
-        state: CaptureState,
-        preset: ScenePreset
+        state: CaptureState
     ) {
         self.client = client
         self.hasAPIKey = hasAPIKey
@@ -250,7 +246,6 @@ final class CaptureModel: ObservableObject {
         self.store = store
         self.transfers = transfers
         self.state = state
-        runPreset = preset
         if case .paused(let paused) = state {
             sceneID = paused.sceneID
         }
@@ -372,7 +367,6 @@ final class CaptureModel: ObservableObject {
             return
         }
         sceneID = nil
-        runPreset = run.preset
         // A new run: no scene yet, and no failure to come back to.
         try? store.saveSceneID(nil)
         try? store.saveFailure(nil)
@@ -1151,8 +1145,6 @@ extension CaptureModel {
         var hasAPIKey = true
         var cameraAccess = AVAuthorizationStatus.authorized
         var scanning: (poses: Int, frames: Int, elapsed: TimeInterval, tracking: TrackingStatus?)?
-        /// The run's preset, which the snippets show.
-        var preset = ScenePreset.fast
     }
 
     static func preview(_ state: CaptureState, _ setup: PreviewSetup = PreviewSetup()) -> CaptureModel {
@@ -1163,8 +1155,7 @@ extension CaptureModel {
             cameraAccess: setup.cameraAccess,
             store: CaptureStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("PreviewCapture")),
             transfers: TransferWatcher(),
-            state: state,
-            preset: setup.preset
+            state: state
         )
         model.isPreview = true
         if let scanning = setup.scanning {

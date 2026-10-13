@@ -12,7 +12,7 @@ import CoreText
 //
 //   Palette ──> colors for light and dark
 //   TypeStyle ──> .typeStyle(.body): bundled variable fonts, Dynamic Type
-//   Panel, MonoLabel, Tag, StatusDot, SquareTabs, APICallBlock, NoticeBox
+//   Panel, MonoLabel, Tag, StatusDot, SquareTabs, NoticeBox
 //   HairlineButtonStyle: .primary (the one action), .ghost, .destructive
 //   Mark, Logo: mark G·5 and the splat3D wordmark
 
@@ -516,76 +516,6 @@ struct NoticeBox<Actions: View>: View {
 extension NoticeBox where Actions == EmptyView {
     init(tone: Tone, title: String, detail: String) {
         self.init(tone: tone, title: title, detail: detail) { EmptyView() }
-    }
-}
-
-// MARK: - The same thing, in Swift
-
-/// The SDK call behind the current screen, as on splat-3d.com where each
-/// screen ends in the API call that does the same thing. Copyable.
-struct APICallBlock: View {
-    let code: String
-
-    @State private var copied = false
-
-    private static let copiedFor: Duration = .milliseconds(1500)
-
-    /// Space between the header's text and the panel's edge.
-    private static let headerInset: CGFloat = 12
-
-    var body: some View {
-        Panel {
-            HStack {
-                MonoLabel("The same thing, in Swift")
-                Spacer()
-                // Holds Copy's place in the row. The button sits over it,
-                // taller than the header, so the header keeps its height.
-                copyLabel
-                    .hidden()
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, Self.headerInset)
-            .padding(.vertical, 9)
-            .overlay(alignment: .trailing) {
-                copyButton
-            }
-
-            Rule()
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .typeStyle(.code)
-                    .foregroundStyle(Palette.ink)
-                    .lineSpacing(3)
-                    .fixedSize()
-                    .padding(12)
-            }
-        }
-    }
-
-    /// In the accent, which marks what you can act on.
-    private var copyLabel: some View {
-        Text(copied ? "Copied" : "Copy")
-            .typeStyle(.label)
-            .foregroundStyle(Palette.accent)
-    }
-
-    /// At least 44 pt each way: the text alone was the only target.
-    private var copyButton: some View {
-        Button {
-            UIPasteboard.general.string = code
-            copied = true
-            Task {
-                try? await Task.sleep(for: Self.copiedFor)
-                copied = false
-            }
-        } label: {
-            copyLabel
-                .padding(.horizontal, Self.headerInset)
-                .frame(minWidth: Hairline.touchTarget, minHeight: Hairline.touchTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 

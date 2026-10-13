@@ -76,9 +76,6 @@ the scene and says it can't draw it.
 **Scenes** (top right) lists the account's latest scenes with their status.
 A complete one opens in 3D. Swipe or long-press a row to delete it.
 
-Each screen ends with the SDK call behind it, under **The same thing, in
-Swift**, with a Copy button.
-
 ## When a run stops
 
 The app reads every error from `createAndProcess` the way the SDK's README

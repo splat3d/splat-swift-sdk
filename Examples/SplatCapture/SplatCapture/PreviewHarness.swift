@@ -146,8 +146,7 @@ struct PreviewHarness: View {
         case "paused-app-closed":
             return .preview(.paused(PausedRun(sceneID: sceneID, phase: nil, cause: .appClosed, interruption: nil)))
         case "paused-not-created":
-            // Not Fast, to show the snippet follows the run's preset.
-            return .preview(outcome(URLError(.notConnectedToInternet), sceneID: nil), .init(preset: .standard))
+            return .preview(outcome(URLError(.notConnectedToInternet), sceneID: nil))
         case "paused-credits":
             let credits = refusal(402, "insufficient_credits", "Insufficient credits. Need 10 credits to process this scene.")
             return .preview(outcome(interruption(.launch, SplatError.requestFailed(credits))))

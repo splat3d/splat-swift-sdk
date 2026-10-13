@@ -4,7 +4,7 @@ import Splat3D
 // MARK: - Run screens
 //
 // One screen per CaptureState after the scan: running, paused, failed and
-// complete. Each ends with the SDK call behind it.
+// complete.
 
 /// Where to add credits: the billing page of the Splat3D dashboard.
 let billingURL = URL(string: "https://splat-3d.com/dashboard/settings/billing")!
@@ -91,41 +91,10 @@ struct HairlineProgress: View {
     }
 }
 
-// Snippets keep to about 40 columns, the width of a phone in portrait.
-
-/// The catch ladder of a reference integration.
-private let recoveryCall = """
-    do {
-        scene = try await client
-            .createAndProcess(videoURL: url)
-    } catch SplatError.interrupted(let stop) {
-        // Never pays twice.
-        scene = try await client.resume(stop)
-    } catch SplatError.processingFailed {
-        // Final. The server refunds it.
-    }
-    """
-
-/// The call that starts a run, with the run's preset, as CaptureModel makes it.
-private func createCall(_ preset: ScenePreset) -> String {
-    """
-    let scene = try await client
-        .createAndProcess(
-            videoURL: capture.videoURL,
-            preset: .\(preset.rawValue),
-            arkitPoses: capture.poses,
-            lidarPoints: capture.lidarPoints
-        ) { status, percent in
-            print(status, percent ?? 0)
-        }
-    """
-}
-
 // MARK: - Running
 
 struct RunningView: View {
     let progress: RunProgress
-    let preset: ScenePreset
     let thumbnail: UIImage?
     let isOnline: Bool
 
@@ -171,8 +140,6 @@ struct RunningView: View {
                         .padding(10)
                 }
             }
-
-            APICallBlock(code: createCall(preset))
         }
     }
 
@@ -324,7 +291,6 @@ private struct StepRow: View {
 
 struct PausedView: View {
     let paused: PausedRun
-    let preset: ScenePreset
     let isOnline: Bool
     let onResume: () -> Void
     let onDiscard: () -> Void
@@ -394,21 +360,7 @@ struct PausedView: View {
             } message: {
                 Text("The video and poses on this phone are deleted. A scene already created stays in Scenes.")
             }
-
-            APICallBlock(code: call)
         }
-    }
-
-    /// The call Resume makes (CaptureModel.resume).
-    private var call: String {
-        if paused.interruption != nil {
-            return recoveryCall
-        }
-        // The scene was never created: Resume starts the run over.
-        guard paused.sceneID != nil else {
-            return createCall(preset)
-        }
-        return relaunchCall
     }
 
     /// The step that stopped. After a relaunch, SplatCapture doesn't know,
@@ -430,16 +382,6 @@ struct PausedView: View {
             return "Processing"
         }
         return phase.rawValue
-    }
-
-    private var relaunchCall: String {
-        """
-        // After a relaunch, from what you saved:
-        scene = try await client.resume(
-            sceneID: savedID, preset: .\(preset.rawValue),
-            arkitPoses: saved.poses,
-            lidarPoints: saved.points)
-        """
     }
 }
 
@@ -495,8 +437,6 @@ struct FailedView: View {
                         .buttonStyle(.destructive)
                 }
             }
-
-            APICallBlock(code: recoveryCall)
         }
     }
 }
@@ -567,14 +507,6 @@ struct CompleteView: View {
             } message: {
                 Text("Its model, video and thumbnail are deleted for good.")
             }
-
-            APICallBlock(code: """
-                let spz = try await client
-                    .downloadScene(id: id, format: .spz)
-                let image = try await client
-                    .getSceneThumbnail(id: id)
-                try await client.deleteScene(id: id)
-                """)
         }
     }
 
