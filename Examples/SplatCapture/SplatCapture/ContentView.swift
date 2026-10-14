@@ -451,6 +451,8 @@ struct ScanningView: View {
     @State private var confirmingCancel = false
     /// Set by Stop before CaptureLength.minimum: keep recording or discard.
     @State private var confirmingShortStop = false
+    /// The scan's length when that Stop was tapped; recording goes on under the dialog.
+    @State private var shortStopAt: TimeInterval = 0
 
     #if DEBUG
     @Environment(\.previewBackdrop) private var previewBackdrop
@@ -533,7 +535,7 @@ struct ScanningView: View {
                     Task { await model.cancelScan() }
                 }
             } message: {
-                Text("You've recorded \(duration). Splat3D needs at least \(CaptureLength.minimumText) of video to build a scene. Discarding deletes the video and poses: nothing is uploaded or charged.")
+                Text("Still recording. You tapped Stop at \(clock(shortStopAt)). Splat3D needs at least \(CaptureLength.minimumText) of video to build a scene. Discarding deletes the video and poses: nothing is uploaded or charged.")
             }
         }
         .environment(\.colorScheme, .dark)
@@ -587,6 +589,7 @@ struct ScanningView: View {
             // refuse the video, so ask instead of uploading.
             switch CaptureLength.stopAction(after: model.elapsed) {
             case .ask:
+                shortStopAt = model.elapsed
                 confirmingShortStop = true
             case .upload:
                 isStopping = true
@@ -608,7 +611,12 @@ struct ScanningView: View {
 
     /// "1:05".
     private var duration: String {
-        let seconds = Int(model.elapsed)
+        clock(model.elapsed)
+    }
+
+    /// "1:05" for 65 seconds.
+    private func clock(_ elapsed: TimeInterval) -> String {
+        let seconds = Int(elapsed)
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 

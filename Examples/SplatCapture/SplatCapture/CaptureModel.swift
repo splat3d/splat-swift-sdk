@@ -350,6 +350,10 @@ final class CaptureModel: ObservableObject {
         }
 
         state = .scanning
+        // A hands-off scan touches nothing after Start, and Auto-Lock can be
+        // 30 s (Low Power Mode): the API's minimum. A lock would interrupt
+        // ARKit mid-scan, so keep the screen on until the scan ends.
+        UIApplication.shared.isIdleTimerDisabled = true
         scanStart = Date()
         durationTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -819,6 +823,7 @@ final class CaptureModel: ObservableObject {
     }
 
     private func stopScanTimers() {
+        UIApplication.shared.isIdleTimerDisabled = false
         durationTimer?.invalidate()
         durationTimer = nil
         trackingTask?.cancel()
