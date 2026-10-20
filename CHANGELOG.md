@@ -2,7 +2,7 @@
 
 All notable changes to Splat3D. Versions follow [Semantic Versioning](https://semver.org).
 
-## Unreleased
+## 1.0.0
 
 ### Breaking changes
 

@@ -15,7 +15,7 @@ Add Splat3D to your project using Swift Package Manager:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/splat3d/splat-swift-sdk", branch: "main")
+    .package(url: "https://github.com/splat3d/splat-swift-sdk", from: "1.0.0")
 ],
 targets: [
     .target(
@@ -25,9 +25,7 @@ targets: [
 ]
 ```
 
-Or in Xcode: **File > Add Package Dependencies**, enter the repository URL, and pick the `main` branch.
-
-1.0.0 isn't tagged yet, so use `branch: "main"` until it is.
+Or in Xcode: **File > Add Package Dependencies**, enter the repository URL, and pick **Up to Next Major Version** from 1.0.0.
 
 ## Quick Start
 
