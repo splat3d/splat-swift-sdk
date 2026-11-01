@@ -3,11 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>SplatCapture needs camera access to scan 3D scenes with ARKit.</string>
+	<string>Splat Capture records video of the space you scan and uploads it to Splat3D, which builds your 3D scene from it.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>SplatCapture needs motion data to track camera poses for 3D reconstruction.</string>
-	<key>SplatAPIKey</key>
-	<string>$(SPLAT_API_KEY)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>HankenGrotesk-Variable.ttf</string>

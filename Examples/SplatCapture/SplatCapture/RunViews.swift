@@ -6,9 +6,6 @@ import Splat3D
 // One screen per CaptureState after the scan: running, paused, failed and
 // complete.
 
-/// Where to add credits: the billing page of the Splat3D dashboard.
-let billingURL = URL(string: "https://splat-3d.com/dashboard/settings/billing")!
-
 /// A screen as an inset grouped list, so its margins and corners are the
 /// system's: a navigation title, an optional headline in Hanken, a lead, the
 /// scene's ID once it has one, then its sections. Its actions are pinned at
@@ -372,6 +369,9 @@ private struct StepRow: View {
 
 struct PausedView: View {
     let paused: PausedRun
+    /// Where the App Store allows it (the US storefront), the screen links
+    /// to billing; elsewhere it only says what is missing.
+    let showsPurchaseLinks: Bool
     let isOnline: Bool
     let onResume: () -> Void
     let onDiscard: () -> Void
@@ -387,13 +387,13 @@ struct PausedView: View {
     /// Credits are what's missing, so adding them is the one action.
     private var needsCredits: Bool {
         if case .insufficientCredits = paused.cause {
-            return true
+            return showsPurchaseLinks
         }
         return false
     }
 
     var body: some View {
-        Screen(title: "Paused", sceneID: paused.sceneID, headline: paused.title, lead: paused.detail) {
+        Screen(title: "Paused", sceneID: paused.sceneID, headline: paused.title, lead: paused.detail(showsPurchaseLinks: showsPurchaseLinks)) {
             Section {
                 FactRow(label: "Stopped at") {
                     Text(stoppedAt)
@@ -407,7 +407,7 @@ struct PausedView: View {
             }
         } actions: {
             if needsCredits {
-                Link("Add credits", destination: billingURL)
+                Link("Add credits", destination: AppEnvironment.billingURL)
                     .actionStyle(.primary)
             }
             Button("Resume", action: onResume)
@@ -417,8 +417,8 @@ struct PausedView: View {
                 ActionNote("Resumes by itself when you're back online.")
             }
             // The plan's monthly limit: billing is where the plan changes.
-            if case .quotaExceeded = paused.cause {
-                Link("Open billing", destination: billingURL)
+            if case .quotaExceeded = paused.cause, showsPurchaseLinks {
+                Link("Open billing", destination: AppEnvironment.billingURL)
                     .actionStyle(.secondary)
             }
         }

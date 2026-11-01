@@ -28,7 +28,9 @@ struct PreviewHarness: View {
     /// on a scene with every detail, and `viewer-info-legacy` on one from an
     /// API before 1.5.0; `viewer-info-full` is the sheet's whole list.
     static let states = [
-        "home", "home-first-run", "home-no-lidar", "home-camera-off", "home-no-key", "home-deleted",
+        "signin", "signin-notice", "signin-no-lidar",
+        "home", "home-first-run", "home-no-lidar", "home-camera-off", "home-deleted",
+        "home-low-credits", "home-monthly-limit", "home-queue-full", "account", "account-run-active",
         "home-accessibility",
         "scanning", "scanning-limited", "scanning-bright",
         "saving", "uploading", "launching", "processing", "processing-unknown", "processing-offline",
@@ -67,6 +69,14 @@ struct PreviewHarness: View {
     @ViewBuilder
     private func screen(_ state: String) -> some View {
         switch state {
+        case let state where state.hasPrefix("signin"):
+            SignInView(
+                session: Self.session(state),
+                notice: state == "signin-notice" ? "This device was signed out. Sign in again." : nil,
+                hasLiDAR: state != "signin-no-lidar"
+            )
+        case let state where state.hasPrefix("account"):
+            AccountView(session: Self.session(state), runIsActive: state == "account-run-active")
         case let state where state.hasPrefix("scenes"):
             NavigationStack {
                 RecentScenesView(previewing: RecentScenesModel(previewing: Self.scenesState(state)))
@@ -85,7 +95,12 @@ struct PreviewHarness: View {
                 )
             }
         default:
-            CaptureRoot(model: Self.model(state), connectivity: Connectivity(previewOnline: !state.hasSuffix("offline") && state != "paused-connection"))
+            CaptureRoot(
+                model: Self.model(state),
+                connectivity: Connectivity(previewOnline: !state.hasSuffix("offline") && state != "paused-connection"),
+                session: Self.session(state),
+                credentials: nil
+            )
         }
     }
 
@@ -159,8 +174,6 @@ struct PreviewHarness: View {
             return .preview(.idle, .init(hasLiDAR: false))
         case "home-camera-off":
             return .preview(.idle, .init(cameraAccess: .denied))
-        case "home-no-key":
-            return .preview(.idle, .init(hasAPIKey: false))
         case "home-deleted":
             let model = CaptureModel.preview(.idle)
             model.notice = HomeNotice(title: "Scene deleted", detail: "\(scene.displayTitle) and its files are gone.", isError: false)
@@ -216,6 +229,56 @@ struct PreviewHarness: View {
             return model
         default:
             return .preview(.idle)
+        }
+    }
+
+    // MARK: Made-up account
+
+    private static let account = Account(
+        email: "demo@example.com",
+        plan: "creator",
+        creditBalance: 120,
+        presets: [
+            PresetCost(preset: .fast, credits: 10),
+            PresetCost(preset: .standard, credits: 30),
+            PresetCost(preset: .quality, credits: 60),
+            PresetCost(preset: .ultra, credits: 120),
+        ],
+        running: 0,
+        maxRunning: 2
+    )
+
+    private static func usage(created: Int) -> Usage {
+        let limit = 10
+        return Usage(
+            period: "2026-11",
+            scenesCreated: created,
+            scenesProcessed: created,
+            gpuSecondsUsed: 0,
+            storageBytes: 0,
+            limits: Usage.Limits(scenesCreated: limit, scenesProcessed: limit, gpuSeconds: 0, storageBytes: 0)
+        )
+    }
+
+    /// The account a state is signed in as. Only the states that show an
+    /// account, or sign-in, differ from the usual one.
+    private static func session(_ state: String) -> AccountSession {
+        let credentials = AccountSession.APICredentials(apiKey: "s3d_preview", apiURL: AppEnvironment.apiURL)
+        switch state {
+        case "signin", "signin-no-lidar":
+            return AccountSession(previewing: .signedOut(notice: nil))
+        case "signin-notice":
+            return AccountSession(previewing: .signedOut(notice: "This device was signed out. Sign in again."))
+        case "home-low-credits":
+            let low = Account(email: account.email, plan: account.plan, creditBalance: 4, presets: account.presets, running: 0, maxRunning: 2)
+            return AccountSession(previewing: .signedIn(credentials), account: low, usage: usage(created: 3), showsPurchaseLinks: true)
+        case "home-monthly-limit":
+            return AccountSession(previewing: .signedIn(credentials), account: account, usage: usage(created: 10))
+        case "home-queue-full":
+            let busy = Account(email: account.email, plan: account.plan, creditBalance: 120, presets: account.presets, running: 2, maxRunning: 2)
+            return AccountSession(previewing: .signedIn(credentials), account: busy, usage: usage(created: 3))
+        default:
+            return AccountSession(previewing: .signedIn(credentials), account: account, usage: usage(created: 3))
         }
     }
 

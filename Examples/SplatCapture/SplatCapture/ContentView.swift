@@ -5,36 +5,21 @@ import Splat3D
 
 // MARK: - Splat3D Integration: Configuration
 //
-// 1. Your API key is read at runtime from the SPLAT_API_KEY build setting.
-//    Copy Secrets.example.xcconfig to Secrets.xcconfig (git ignores it) and set
-//    it there. Never put a key in source: this repository is public.
+// 1. The app holds no API key. The user signs in on splat-3d.com and the app
+//    gets a key made for this device, kept in the Keychain (AccountSession.swift).
+//    Each screen's model builds its own SplatClient from those credentials.
 // 2. The SDK entry points used in this app:
 //    - SplatScanner  — captures video + ARKit poses (CaptureModel.swift)
 //    - SplatClient   — uploads and processes via the Splat API, resumes an
 //                      interrupted run without paying twice, fetches the
 //                      thumbnail and deletes (CaptureModel.swift); lists and
 //                      deletes scenes (RecentScenesView.swift) and downloads
-//                      their SPZ (SceneViewer.swift)
+//                      their SPZ (SceneViewer.swift); reads the month's usage
+//                      (AccountSession.swift)
 //    - ARKitPose     — pose format sent to the API (handled internally by
 //                      SplatScanner, and saved by CaptureStore.swift)
 // 3. SplatKit (github.com/Xget7/splatkit-ios, MIT) draws the downloaded scene
 //    natively: see SplatWorldView.swift.
-
-/// Your Splat API key, from the `SplatAPIKey` Info.plist entry, which the build
-/// fills from `SPLAT_API_KEY` in Secrets.xcconfig. `nil` until you set it.
-let apiKey: String? = {
-    guard let key = Bundle.main.object(forInfoDictionaryKey: "SplatAPIKey") as? String,
-          key.hasPrefix("s3d_") else {
-        return nil
-    }
-    return key
-}()
-
-/// What to do when no key is set, under a title that says so.
-let missingAPIKeyMessage = """
-    Copy Examples/SplatCapture/Secrets.example.xcconfig to Secrets.xcconfig, \
-    set SPLAT_API_KEY to your key, and build again.
-    """
 
 // MARK: - Mesh Material
 
@@ -190,11 +175,23 @@ enum Route: Hashable {
 
 struct ContentView: View {
 
-    @StateObject private var model = CaptureModel()
+    let credentials: AccountSession.APICredentials
+    let session: AccountSession
+
+    @StateObject private var model: CaptureModel
     @StateObject private var connectivity = Connectivity()
 
+    init(credentials: AccountSession.APICredentials, session: AccountSession) {
+        self.credentials = credentials
+        self.session = session
+        _model = StateObject(wrappedValue: CaptureModel(
+            credentials: credentials,
+            onKeyRejected: { [weak session] in session?.keyRejected() }
+        ))
+    }
+
     var body: some View {
-        CaptureRoot(model: model, connectivity: connectivity)
+        CaptureRoot(model: model, connectivity: connectivity, session: session, credentials: credentials)
     }
 }
 
@@ -204,6 +201,11 @@ struct CaptureRoot: View {
 
     @ObservedObject var model: CaptureModel
     @ObservedObject var connectivity: Connectivity
+    let session: AccountSession
+    /// `nil` in previews, which reach no API.
+    let credentials: AccountSession.APICredentials?
+
+    @State private var showsAccount = false
 
     // Fast by default: the quickest and cheapest preset, for trying things out.
     @AppStorage("scenePreset") private var preset = ScenePreset.fast
@@ -219,6 +221,13 @@ struct CaptureRoot: View {
                     // screen, inline on the rest.
                     screen
                         .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button {
+                                    showsAccount = true
+                                } label: {
+                                    Label("Account", systemImage: ToolbarSymbol.named("person"))
+                                }
+                            }
                             ToolbarItem(placement: .topBarTrailing) {
                                 NavigationLink(value: Route.recentScenes) {
                                     Label("Scenes", systemImage: "square.stack.3d.up")
@@ -228,10 +237,13 @@ struct CaptureRoot: View {
                         .navigationDestination(for: Route.self) { route in
                             switch route {
                             case .recentScenes:
-                                RecentScenesView()
+                                RecentScenesView(credentials: credentials, onKeyRejected: keyRejected)
                             case .viewer(let scene):
-                                SceneViewerScreen(scene: scene)
+                                SceneViewerScreen(scene: scene, credentials: credentials, onKeyRejected: keyRejected)
                             }
+                        }
+                        .sheet(isPresented: $showsAccount) {
+                            AccountView(session: session, runIsActive: model.isRunActive)
                         }
                 }
             }
@@ -240,7 +252,17 @@ struct CaptureRoot: View {
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {
                 model.appBecameActive()
+                Task { await session.refresh() }
             }
+        }
+        // A run that ended may have spent credits or a scene of the month.
+        .onChange(of: model.isRunActive) { _, active in
+            if !active {
+                Task { await session.refresh() }
+            }
+        }
+        .onChange(of: session.showsPurchaseLinks, initial: true) { _, shows in
+            model.showsPurchaseLinks = shows
         }
         .onChange(of: connectivity.isOnline) { _, online in
             if online {
@@ -249,16 +271,21 @@ struct CaptureRoot: View {
         }
     }
 
+    private func keyRejected() {
+        session.keyRejected()
+    }
+
     @ViewBuilder
     private var screen: some View {
         switch model.state {
         case .idle, .scanning:
-            HomeView(model: model, preset: $preset)
+            HomeView(model: model, session: session, preset: $preset)
         case .running(let progress):
             RunningView(progress: progress, thumbnail: model.thumbnail, isOnline: connectivity.isOnline)
         case .paused(let paused):
             PausedView(
                 paused: paused,
+                showsPurchaseLinks: session.showsPurchaseLinks,
                 isOnline: connectivity.isOnline,
                 onResume: { model.resume() },
                 onDiscard: { model.discard() }
@@ -290,9 +317,14 @@ struct CaptureRoot: View {
 struct HomeView: View {
 
     @ObservedObject var model: CaptureModel
+    let session: AccountSession
     @Binding var preset: ScenePreset
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var rules: CaptureRules {
+        CaptureRules(account: session.account, usage: session.usage, preset: preset)
+    }
 
     var body: some View {
         // Titled by what it does: the app's name is on the Home Screen.
@@ -311,6 +343,7 @@ struct HomeView: View {
             }
 
             blocker
+            rulesNotices
 
             Section {
                 presetRows
@@ -327,8 +360,8 @@ struct HomeView: View {
                 FactRow(label: "Camera") {
                     StatusLabel(state: cameraDot, text: cameraText)
                 }
-                FactRow(label: "API key") {
-                    StatusLabel(state: model.hasAPIKey ? .done : .failed, text: model.hasAPIKey ? "Set" : "Missing")
+                FactRow(label: "Credits") {
+                    Text(creditsText)
                 }
             }
         } actions: {
@@ -370,9 +403,9 @@ struct HomeView: View {
         }
     }
 
-    /// "800 px · 3K iterations · about 3 min".
+    /// "800 px · 3K iterations · about 3 min · 10 credits".
     private var presetSummary: some View {
-        Text(preset.summary)
+        Text(rules.cost.map { "\(preset.summary) · \($0) credits" } ?? preset.summary)
             .typeStyle(.data)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -383,7 +416,15 @@ struct HomeView: View {
     }
 
     private var canCapture: Bool {
-        model.hasAPIKey && model.hasLiDAR && !cameraDenied
+        model.hasLiDAR && !cameraDenied && !rules.blocksStart
+    }
+
+    /// "120 credits", or a dash until the account has loaded.
+    private var creditsText: String {
+        guard let account = session.account else {
+            return "—"
+        }
+        return "\(account.creditBalance.formatted()) credits"
     }
 
     private var cameraDot: DotState {
@@ -411,9 +452,7 @@ struct HomeView: View {
     /// What stops a capture on this device, worst first.
     @ViewBuilder
     private var blocker: some View {
-        if !model.hasAPIKey {
-            NoticeCard(tone: .alarm, title: "No API key", detail: missingAPIKeyMessage)
-        } else if !model.hasLiDAR {
+        if !model.hasLiDAR {
             NoticeCard(
                 tone: .neutral,
                 title: "This device has no LiDAR scanner",
@@ -433,6 +472,23 @@ struct HomeView: View {
                 }
                 .actionStyle(.secondary, width: .fitted)
             }
+        }
+    }
+
+    /// What the account says about this capture: why Start is off, or a
+    /// warning with Start on.
+    @ViewBuilder
+    private var rulesNotices: some View {
+        if let block = rules.block {
+            NoticeCard(tone: .alarm, title: block.title, detail: block.detail) {
+                if case .credits = block, session.showsPurchaseLinks {
+                    Link("Add credits", destination: AppEnvironment.billingURL)
+                        .actionStyle(.secondary, width: .fitted)
+                }
+            }
+        }
+        if let warning = rules.warning {
+            NoticeCard(tone: .neutral, title: "Scenes are processing", detail: warning)
         }
     }
 }

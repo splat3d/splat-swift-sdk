@@ -71,6 +71,29 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/release"
           CODE_SIGNING_ALLOWED=NO
 
+      # The app holds no API key: a key in the Info.plist means a build setting
+      # came back. The privacy manifest and the entitlements are what App
+      # Review and sign-in need.
+      - name: Release holds no key and keeps the sign-in files
+        run: |
+          app="$RUNNER_TEMP/release/Build/Products/Release-iphoneos/SplatCapture.app"
+          if /usr/libexec/PlistBuddy -c 'Print :SplatAPIKey' "$app/Info.plist"; then
+            echo "::error::The Release Info.plist has a SplatAPIKey"
+            exit 1
+          fi
+          if [ ! -f "$app/PrivacyInfo.xcprivacy" ]; then
+            echo "::error::The Release app has no PrivacyInfo.xcprivacy"
+            exit 1
+          fi
+          if ! xcodebuild -showBuildSettings \
+            -project Examples/SplatCapture/SplatCapture.xcodeproj \
+            -scheme SplatCapture \
+            -configuration Release \
+            | grep -q 'CODE_SIGN_ENTITLEMENTS = SplatCapture/SplatCapture.entitlements'; then
+            echo "::error::The Release build lacks CODE_SIGN_ENTITLEMENTS"
+            exit 1
+          fi
+
       # The state previews are Debug only (#if DEBUG in PreviewHarness.swift).
       - name: Release leaves out the previews
         run: |

@@ -71,10 +71,11 @@ struct PausedRun {
         case backgrounded
         /// Found on launch: the app was killed mid-run.
         case appClosed
-        case insufficientCredits(String)
+        case insufficientCredits
         /// The plan's limit on scenes processing at once.
-        case queueFull(String)
-        case quotaExceeded(String)
+        case queueFull
+        case quotaExceeded
+        /// The API refused this device's key: the app signs out.
         case keyRejected
         /// SplatClient stopped waiting; the job may still finish.
         case timedOut
@@ -196,7 +197,18 @@ final class CaptureModel: ObservableObject {
 
     /// Capture needs LiDAR: SplatScanner records its mesh as points.
     let hasLiDAR: Bool
-    let hasAPIKey: Bool
+    /// Whether the app may link to buying credits (US storefront only):
+    /// set by CaptureRoot from the AccountSession.
+    @Published var showsPurchaseLinks: Bool
+    /// A run is on its way or waiting to resume.
+    var isRunActive: Bool {
+        switch state {
+        case .running, .paused:
+            return true
+        default:
+            return false
+        }
+    }
 
     /// Exposed so the scanning view can attach an ARSCNView to the session.
     var arSession: ARSession? { scanner.session }
@@ -207,6 +219,8 @@ final class CaptureModel: ObservableObject {
     /// Watches the client's session, for the upload's bytes.
     private let transfers: TransferWatcher
     private let store: CaptureStore
+    /// The API refused the key (401): the app signs out.
+    private let onKeyRejected: @MainActor () -> Void
 
     private var runTask: Task<Void, Never>?
     /// Bumped by every run and by discarding, so a cancelled run that ends
@@ -241,7 +255,7 @@ final class CaptureModel: ObservableObject {
     private static let uploadStarted: Double = 0
     private static let uploadFinished: Double = 100
 
-    convenience init() {
+    convenience init(credentials: AccountSession.APICredentials, onKeyRejected: @escaping @MainActor () -> Void) {
         let transfers = TransferWatcher()
         let session = URLSession(configuration: .default, delegate: transfers, delegateQueue: nil)
         let store = CaptureStore.live
@@ -258,27 +272,28 @@ final class CaptureModel: ObservableObject {
         } ?? .idle
 
         self.init(
-            client: apiKey.map { SplatClient(apiKey: $0, session: session) },
-            hasAPIKey: apiKey != nil,
+            client: SplatClient(apiKey: credentials.apiKey, baseURL: credentials.apiURL, session: session),
             hasLiDAR: ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh),
             cameraAccess: AVCaptureDevice.authorizationStatus(for: .video),
             store: store,
             transfers: transfers,
-            state: state
+            state: state,
+            onKeyRejected: onKeyRejected
         )
     }
 
     private init(
         client: SplatClient?,
-        hasAPIKey: Bool,
         hasLiDAR: Bool,
         cameraAccess: AVAuthorizationStatus,
         store: CaptureStore,
         transfers: TransferWatcher,
-        state: CaptureState
+        state: CaptureState,
+        onKeyRejected: @escaping @MainActor () -> Void
     ) {
         self.client = client
-        self.hasAPIKey = hasAPIKey
+        self.onKeyRejected = onKeyRejected
+        showsPurchaseLinks = false
         self.hasLiDAR = hasLiDAR
         self.cameraAccess = cameraAccess
         self.store = store
@@ -321,7 +336,7 @@ final class CaptureModel: ObservableObject {
 
     func startScan() async {
         // The start screen explains each of these; the button is off for them.
-        guard hasAPIKey, hasLiDAR else {
+        guard hasLiDAR else {
             return
         }
         if cameraAccess == .notDetermined {
@@ -596,7 +611,6 @@ final class CaptureModel: ObservableObject {
     private func perform(from progress: RunProgress, _ operation: @escaping @MainActor (SplatClient) async throws -> SplatScene) {
         guard let client else {
             reset()
-            notice = HomeNotice(title: "No API key", detail: missingAPIKeyMessage)
             return
         }
 
@@ -697,6 +711,10 @@ final class CaptureModel: ObservableObject {
         switch RunOutcome(error, sceneID: sceneID, cancelledBy: canceller) {
         case .paused(let paused):
             state = .paused(paused)
+            if paused.cause == .keyRejected {
+                onKeyRejected()
+                return
+            }
             // Background time ran out, and the app is already back in front.
             if paused.cause == .backgrounded, UIApplication.shared.applicationState == .active {
                 resume()
@@ -795,6 +813,9 @@ final class CaptureModel: ObservableObject {
             // MARK: - Splat3D Integration: Delete
             try await client.deleteScene(id: scene.id)
         } catch {
+            if case SplatError.unauthorized = error {
+                onKeyRejected()
+            }
             deleteError = error.localizedDescription
             return
         }
@@ -1052,11 +1073,11 @@ enum RunOutcome {
         if let refusal = (error as? SplatError)?.apiError {
             switch refusal.code {
             case Code.insufficientCredits:
-                return .insufficientCredits(refusal.message)
+                return .insufficientCredits
             case Code.queueFull:
-                return .queueFull(refusal.message)
+                return .queueFull
             case Code.quotaExceeded:
-                return .quotaExceeded(refusal.message)
+                return .quotaExceeded
             default:
                 return .other(refusal.message)
             }
@@ -1105,7 +1126,7 @@ extension PausedRun {
         case .quotaExceeded:
             return "Monthly limit reached"
         case .keyRejected:
-            return "API key rejected"
+            return "Signed out"
         case .timedOut:
             return "Still processing"
         case .other:
@@ -1113,7 +1134,9 @@ extension PausedRun {
         }
     }
 
-    var detail: String {
+    /// What the pause says. Built from the error code, never from the API's
+    /// message, which sends people to "Upgrade your plan".
+    func detail(showsPurchaseLinks: Bool) -> String {
         switch cause {
         case .connection:
             return "The network dropped before Splat Capture heard back."
@@ -1121,14 +1144,18 @@ extension PausedRun {
             return "iOS paused Splat Capture soon after you left it. It picks up when you come back, or tap Resume."
         case .appClosed:
             return "Splat Capture closed while this capture was on its way. Resume picks up where it stopped."
-        case .insufficientCredits(let message):
-            return "\(Self.droppingCreditsPreamble(message)) Add credits, then Resume."
-        case .queueFull(let message):
-            return message
-        case .quotaExceeded(let message):
-            return "\(message) Change your plan in billing, or Resume next month."
+        case .insufficientCredits:
+            return showsPurchaseLinks
+                ? "Not enough credits. Add credits, then Resume."
+                : "Not enough credits. Resume once your account has enough credits."
+        case .queueFull:
+            return "Your plan allows only so many scenes processing at once. Resume when one finishes."
+        case .quotaExceeded:
+            return showsPurchaseLinks
+                ? "Monthly limit reached. Change your plan in billing, or Resume next month."
+                : "Monthly limit reached. Resume next month."
         case .keyRejected:
-            return "The API didn't accept this build's key. Set SPLAT_API_KEY in Secrets.xcconfig and build again."
+            return "This device was signed out. Sign in again."
         case .timedOut:
             return "Splat Capture stopped waiting, but the job may still finish. Resume keeps watching."
         case .other(let message):
@@ -1154,18 +1181,6 @@ extension PausedRun {
             return "Processing was charged once, and keeps running on the server."
         }
         return "A launch that went through is replayed, not charged again."
-    }
-
-    /// The API's refusal opens with what the title already says: "Not
-    /// enough credits" over "Insufficient credits. Need 10 credits to
-    /// process this scene."
-    private static let creditsPreamble = "Insufficient credits. "
-
-    private static func droppingCreditsPreamble(_ message: String) -> String {
-        guard message.hasPrefix(creditsPreamble) else {
-            return message
-        }
-        return String(message.dropFirst(creditsPreamble.count))
     }
 
     /// The API refuses these launches before charging anything.
@@ -1253,7 +1268,6 @@ extension CaptureModel {
     /// The device and capture a preview pretends to have.
     struct PreviewSetup {
         var hasLiDAR = true
-        var hasAPIKey = true
         var cameraAccess = AVAuthorizationStatus.authorized
         var scanning: (poses: Int, frames: Int, elapsed: TimeInterval, tracking: TrackingStatus?)?
     }
@@ -1261,12 +1275,12 @@ extension CaptureModel {
     static func preview(_ state: CaptureState, _ setup: PreviewSetup = PreviewSetup()) -> CaptureModel {
         let model = CaptureModel(
             client: nil,
-            hasAPIKey: setup.hasAPIKey,
             hasLiDAR: setup.hasLiDAR,
             cameraAccess: setup.cameraAccess,
             store: CaptureStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("PreviewCapture")),
             transfers: TransferWatcher(),
-            state: state
+            state: state,
+            onKeyRejected: {}
         )
         model.isPreview = true
         if let scanning = setup.scanning {

@@ -25,6 +25,15 @@
 		A1000030229F0001 /* MartianMono-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A1000031229F0001 /* MartianMono-Variable.ttf */; };
 		A1000032229F0001 /* OFL-HankenGrotesk.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1000033229F0001 /* OFL-HankenGrotesk.txt */; };
 		A1000034229F0001 /* OFL-MartianMono.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1000035229F0001 /* OFL-MartianMono.txt */; };
+		A1000041229F0001 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000040229F0001 /* AppEnvironment.swift */; };
+		A1000043229F0001 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000042229F0001 /* Keychain.swift */; };
+		A1000045229F0001 /* AppAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000044229F0001 /* AppAPI.swift */; };
+		A1000047229F0001 /* PKCE.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000046229F0001 /* PKCE.swift */; };
+		A1000049229F0001 /* AccountSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000048229F0001 /* AccountSession.swift */; };
+		A100004B229F0001 /* CaptureRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004A229F0001 /* CaptureRules.swift */; };
+		A100004D229F0001 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004C229F0001 /* SignInView.swift */; };
+		A100004F229F0001 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004E229F0001 /* AccountView.swift */; };
+		A1000051229F0001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1000050229F0001 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +56,16 @@
 		A1000031229F0001 /* MartianMono-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MartianMono-Variable.ttf"; sourceTree = "<group>"; };
 		A1000033229F0001 /* OFL-HankenGrotesk.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-HankenGrotesk.txt"; sourceTree = "<group>"; };
 		A1000035229F0001 /* OFL-MartianMono.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-MartianMono.txt"; sourceTree = "<group>"; };
+		A1000040229F0001 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		A1000042229F0001 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		A1000044229F0001 /* AppAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAPI.swift; sourceTree = "<group>"; };
+		A1000046229F0001 /* PKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PKCE.swift; sourceTree = "<group>"; };
+		A1000048229F0001 /* AccountSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSession.swift; sourceTree = "<group>"; };
+		A100004A229F0001 /* CaptureRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRules.swift; sourceTree = "<group>"; };
+		A100004C229F0001 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
+		A100004E229F0001 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		A1000050229F0001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A1000052229F0001 /* SplatCapture.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SplatCapture.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,6 +95,14 @@
 			children = (
 				A1000002229F0001 /* SplatCaptureApp.swift */,
 				A1000004229F0001 /* ContentView.swift */,
+				A1000040229F0001 /* AppEnvironment.swift */,
+				A1000042229F0001 /* Keychain.swift */,
+				A1000044229F0001 /* AppAPI.swift */,
+				A1000046229F0001 /* PKCE.swift */,
+				A1000048229F0001 /* AccountSession.swift */,
+				A100004A229F0001 /* CaptureRules.swift */,
+				A100004C229F0001 /* SignInView.swift */,
+				A100004E229F0001 /* AccountView.swift */,
 				A1000025229F0001 /* CaptureModel.swift */,
 				A1000027229F0001 /* CaptureStore.swift */,
 				A1000029229F0001 /* RunViews.swift */,
@@ -88,6 +115,8 @@
 				A1000018229F0001 /* Assets.xcassets */,
 				A1000036229F0001 /* Fonts */,
 				A1000006229F0001 /* Info.plist */,
+				A1000050229F0001 /* PrivacyInfo.xcprivacy */,
+				A1000052229F0001 /* SplatCapture.entitlements */,
 			);
 			path = SplatCapture;
 			sourceTree = "<group>";
@@ -177,6 +206,7 @@
 				A1000030229F0001 /* MartianMono-Variable.ttf in Resources */,
 				A1000032229F0001 /* OFL-HankenGrotesk.txt in Resources */,
 				A1000034229F0001 /* OFL-MartianMono.txt in Resources */,
+				A1000051229F0001 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -198,6 +228,14 @@
 				A1000028229F0001 /* RunViews.swift in Sources */,
 				A100002A229F0001 /* Theme.swift in Sources */,
 				A100002C229F0001 /* PreviewHarness.swift in Sources */,
+				A1000041229F0001 /* AppEnvironment.swift in Sources */,
+				A1000043229F0001 /* Keychain.swift in Sources */,
+				A1000045229F0001 /* AppAPI.swift in Sources */,
+				A1000047229F0001 /* PKCE.swift in Sources */,
+				A1000049229F0001 /* AccountSession.swift in Sources */,
+				A100004B229F0001 /* CaptureRules.swift in Sources */,
+				A100004D229F0001 /* SignInView.swift in Sources */,
+				A100004F229F0001 /* AccountView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -223,7 +261,7 @@
 					"DEBUG=1",
 					"$(inherited)",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -246,7 +284,7 @@
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_OPTIMIZATION_LEVEL = s;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -260,6 +298,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SplatCapture/SplatCapture.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SplatCapture/Info.plist;
@@ -289,6 +328,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SplatCapture/SplatCapture.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SplatCapture/Info.plist;

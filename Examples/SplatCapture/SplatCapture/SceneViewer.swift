@@ -41,9 +41,9 @@ struct SceneViewerScreen: View {
     /// Scene units per second while a move arrow is held.
     private static let walkingSpeed: Float = 0.6
 
-    init(scene: SplatScene) {
+    init(scene: SplatScene, credentials: AccountSession.APICredentials?, onKeyRejected: @escaping @MainActor () -> Void) {
         self.scene = scene
-        _model = StateObject(wrappedValue: SceneViewerModel(sceneID: scene.id))
+        _model = StateObject(wrappedValue: SceneViewerModel(sceneID: scene.id, credentials: credentials, onKeyRejected: onKeyRejected))
     }
 
     #if DEBUG
@@ -316,13 +316,18 @@ final class SceneViewerModel: ObservableObject {
     private static let progressInterval: Duration = .milliseconds(250)
 
     private let sceneID: String
+    private let credentials: AccountSession.APICredentials?
+    /// The API refused the key (401): the app signs out.
+    private let onKeyRejected: @MainActor () -> Void
     private var file: URL?
     /// Bumped by every load and by the screen closing. A download that lands
     /// after a bump is stale, and is deleted at once.
     private var generation = 0
 
-    init(sceneID: String) {
+    init(sceneID: String, credentials: AccountSession.APICredentials?, onKeyRejected: @escaping @MainActor () -> Void) {
         self.sceneID = sceneID
+        self.credentials = credentials
+        self.onKeyRejected = onKeyRejected
     }
 
     #if DEBUG
@@ -331,6 +336,8 @@ final class SceneViewerModel: ObservableObject {
     /// SplatKit's events: on the Simulator it draws nothing.
     init(previewing phase: Phase, worldReady: Bool = false) {
         sceneID = ""
+        credentials = nil
+        onKeyRejected = {}
         self.phase = phase
         self.worldReady = worldReady
         isPreview = true
@@ -370,8 +377,8 @@ final class SceneViewerModel: ObservableObject {
         stats = nil
         phase = .downloading(received: 0, expected: nil)
 
-        guard let apiKey else {
-            phase = .failed(.noAPIKey)
+        guard let credentials else {
+            phase = .failed(.signedOut)
             return
         }
 
@@ -379,7 +386,7 @@ final class SceneViewerModel: ObservableObject {
         let watcher = TransferWatcher()
         let session = URLSession(configuration: .default, delegate: watcher, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
-        let client = SplatClient(apiKey: apiKey, session: session)
+        let client = SplatClient(apiKey: credentials.apiKey, baseURL: credentials.apiURL, session: session)
 
         let progress = Task { [weak self] in
             while !Task.isCancelled {
@@ -413,6 +420,9 @@ final class SceneViewerModel: ObservableObject {
         } catch is CancellationError {
             // The screen went away mid-download.
         } catch {
+            if case SplatError.unauthorized = error {
+                onKeyRejected()
+            }
             phase = .failed(ViewerFailure(error))
         }
     }
@@ -525,7 +535,8 @@ struct ViewerFailure {
     /// RFC 9110 §15.5.1.
     private static let badRequest = 400
 
-    static let noAPIKey = ViewerFailure(title: "No API key", detail: missingAPIKeyMessage)
+    /// The API refused this device's key.
+    static let signedOut = ViewerFailure(title: "Signed out", detail: "This device was signed out. Sign in again.")
 
     /// The server answered with another format, so this scene has no SPZ.
     static func otherFormat(_ served: String) -> ViewerFailure {
@@ -562,7 +573,7 @@ struct ViewerFailure {
                 retry: .sameAnswer
             )
         case SplatError.unauthorized:
-            self.init(title: "API key rejected", detail: "Check SPLAT_API_KEY in Secrets.xcconfig.")
+            self = .signedOut
         case let urlError as URLError:
             self.init(title: "Network error", detail: urlError.localizedDescription)
         default:

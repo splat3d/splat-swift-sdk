@@ -16,33 +16,70 @@ twice.
    directories up), and SplatKit `0.1.0-beta.1` from GitHub, which downloads a
    prebuilt XCFramework. Xcode resolves both automatically; the first build
    needs a network connection.
-3. Give the app your API key. It is read at runtime from the `SPLAT_API_KEY`
-   build setting, which comes from `Secrets.xcconfig`. Git ignores that file:
-   ```sh
-   cd Examples/SplatCapture
-   cp Secrets.example.xcconfig Secrets.xcconfig
-   # then set SPLAT_API_KEY = s3d_... in Secrets.xcconfig
-   ```
-   Never put a key in source files: this repository is public, and CI fails on
-   anything that looks like one. Without a key, the start screen says so and
-   **Start capture** stays off.
+3. Select your physical iPhone as the run destination and hit **Run**. The
+   app asks you to sign in on splat-3d.com; there is no key to set up.
 
-   A build carries the key in its Info.plist, so anyone with the app can read
-   it. For a TestFlight build, use a key of its own that you can revoke.
-4. Select your physical iPhone as the run destination and hit **Run**
+## Signing in
 
-### Getting an API Key
+The app holds no API key, and none is compiled into it. On first launch you
+sign in or create an account on splat-3d.com in the system browser, and the
+app receives a key made for that device, which you can revoke in the
+dashboard under Developer. It follows RFC 8252: the system browser, an
+authorization code, and PKCE (S256). The callback is an https link on the
+website that iOS checks against the site's `webcredentials` association, so
+no other app can catch the code. The app keeps the key in the Keychain, and
+a reinstall starts signed out.
 
-1. Sign up at [splat-3d.com/dashboard](https://splat-3d.com/dashboard)
-2. Create a new API key — it starts with `s3d_`
-3. Put it in `Secrets.xcconfig` as shown above
+```
+SplatCapture                          splat-3d.com                       api.splat-3d.com
+ verifier, challenge = S256(verifier), state, device_id
+ ── /connect/app?client_id&code_challenge&state&device_id ─▶ sign in, Allow
+ ◀── https://splat-3d.com/connect/app/callback?code&state ──
+ check state
+ ── POST /v1/app/token {code, code_verifier} ─────────────────────────▶ api key
+ Keychain ← key;  GET /v1/app/account, getUsage()
+ sign out ── DELETE /v1/app/key ───────────────────────────────────────▶ revoked
+```
+
+The three `/v1/app/*` routes are for this app only and aren't in the public
+API spec.
+
+**Staging.** Debug builds can use the staging site and API: launch with
+`-SplatEnvironment staging` (in the scheme's arguments). The choice is saved,
+so a launch from the Home Screen keeps it; `-SplatEnvironment prod` switches
+back. Release builds always use production. Staging sign-in needs the staging
+site's `webcredentials` association, which the entitlements list.
+
+## Rules before capture
+
+After signing in, the start screen shows what the account allows, from
+`GET /v1/app/account` and the SDK's `getUsage()`: the credit balance, what
+each preset costs, and the scenes used this month. Start stays off when the
+balance is below the preset's cost or the month's scene limit is used up, and
+a warning shows when scenes already fill the plan's processing slots (a scan
+still starts; its launch waits for a free slot). These checks only say early
+what the server would say late: it enforces every rule, and when the account
+can't be read, nothing blocks. `CaptureRules.swift` holds them.
+
+**Account** (top left) shows the email, plan, credits and scenes this month,
+and has Sign out, which revokes the device's key and discards saved scans, and
+Delete account, which opens splat-3d.com (deletion takes up to 30 days).
+
+## Purchase links
+
+Links to buy credits (Add credits, Open billing, Manage on splat-3d.com) show
+only when the App Store storefront is the United States; elsewhere the app
+says what is missing and nothing more. This follows the App Store rule that
+lets US apps link out to the web. It does not make buying credits on the web
+safe from App Review everywhere (guideline 3.1.1), so the link rule is a
+reason for the gating, not a guarantee.
 
 ## Device Requirements
 
 - **iPhone 12 Pro or newer** (requires LiDAR scanner)
 - iPad Pro with LiDAR also works for capture; viewing in 3D needs an M1 iPad Pro
   or newer (see below)
-- iOS 17.0+. SplatKit requires it; the Splat3D SDK itself still supports iOS 16
+- iOS 17.4+. Sign-in's https callback needs it; the Splat3D SDK itself still supports iOS 16
 - Camera and motion permissions are requested on first launch
 
 The app requires only ARKit to install. On a device without LiDAR, the start
@@ -59,7 +96,7 @@ the scene and says it can't draw it.
 
 1. Pick a preset. **Fast** is the default: the quickest and cheapest, good for
    testing. The choice is remembered. The start screen also checks LiDAR,
-   camera access and the API key.
+   camera access and what the account allows.
 2. Tap **Start capture**. The camera view opens with a blue mesh overlay
    showing surfaces detected by the LiDAR scanner
 3. Slowly walk around the scene you want to capture, for at least 30
@@ -96,13 +133,14 @@ raw error:
 | App left mid-run | It asks iOS for background time; when that runs out, the run pauses | Resumes by itself when the app is back |
 | App killed mid-run | On the next launch, the run picks up | Resumes by itself: `client.resume(sceneID:preset:arkitPoses:lidarPoints:)` with the saved capture |
 | App killed mid-upload | Resume gets `source_missing`, before anything is charged | Uploads by itself to a new scene from the saved capture; the old one is deleted |
-| Not enough credits | **Not enough credits**, with the API's message | **Add credits** (dashboard), then **Resume** |
-| Too many scenes processing | The API's message | **Resume** later |
-| Monthly limit reached | The API's message | **Open billing** to change the plan, or **Resume** next month |
+| Not enough credits | **Not enough credits**, worded from the error code | **Add credits** (US storefront only), then **Resume** |
+| Too many scenes processing | The plan's limit, worded from the error code | **Resume** later |
+| Monthly limit reached | Worded from the error code | **Open billing** (US storefront only), or **Resume** next month |
+| The key is rejected (401) | **Signed out** | Sign in again; the capture waits and resumes |
 | Job failed or cancelled on the server | **Processing failed** (refunded) or **Scene cancelled** | **Process again** (a new, charged scene) or discard |
 | The API can't use the upload (`source_unusable`) | **The server can't use this capture**, nothing charged | **New capture**, which also deletes the scene |
 | Unknown status | The step reads **Working** | Keeps waiting |
-| No LiDAR, camera off, no key | Said on the start screen, with **Open Settings** for the camera | Scenes still work |
+| No LiDAR, camera off | Said on the start screen, with **Open Settings** for the camera | Scenes still work |
 
 So that a killed app can resume, `CaptureStore.swift` keeps the capture in
 Application Support (out of iCloud backups) from before the scene is created
@@ -220,6 +258,8 @@ Key sections are marked with `// MARK: - Splat3D Integration` comments:
 
 | File | What it holds |
 |---|---|
+| `AccountSession.swift`, `AppAPI.swift`, `PKCE.swift`, `Keychain.swift`, `AppEnvironment.swift` | Sign-in, the key, the account calls, and where the app points |
+| `SignInView.swift`, `AccountView.swift`, `CaptureRules.swift` | The sign-in and account screens, and the rules before capture |
 | `CaptureModel.swift` | The run: scan, upload, resume, the error reading, background time |
 | `CaptureStore.swift` | The capture on disk, for resuming after a relaunch |
 | `ContentView.swift` | Start screen, camera view, navigation |
@@ -259,7 +299,17 @@ The version and build number are in `SplatCapture.xcconfig`; raise
 `CURRENT_PROJECT_VERSION` for every TestFlight upload. Release builds leave
 out the state previews and the viewer's frame-rate line. The Info.plist
 declares `ITSAppUsesNonExemptEncryption = NO`: the app uses only the HTTPS
-that iOS provides.
+that iOS provides. `PrivacyInfo.xcprivacy` declares the data the app
+collects and the required-reason APIs it uses.
+
+Before archiving:
+
+- [ ] The association file is reachable through Apple's CDN:
+      `https://app-site-association.cdn-apple.com/a/v1/splat-3d.com` lists the
+      app under `webcredentials`. Sign-in fails without it
+- [ ] `CURRENT_PROJECT_VERSION` is higher than the last upload
+- [ ] The Release `Info.plist` has no `SplatAPIKey` (CI checks this, and that
+      the privacy manifest and entitlements ship)
 
 ## Credits
 
