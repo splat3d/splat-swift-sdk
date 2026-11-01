@@ -32,10 +32,9 @@ struct AppRoot: View {
                 // A new key (signed out, then in) rebuilds the app's state.
                 ContentView(credentials: credentials, session: session)
                     .id(credentials.apiKey)
-            case .signedOut(let notice):
-                SignInView(session: session, notice: notice)
-            case .signingIn:
-                SignInView(session: session, notice: nil)
+            case .signedOut, .signingIn:
+                // One case, so one view identity through the browser hop.
+                SignInView(session: session, notice: session.notice)
             }
         }
         .task { await session.watchStorefront() }

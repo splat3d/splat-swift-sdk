@@ -72,7 +72,7 @@ struct PreviewHarness: View {
         case let state where state.hasPrefix("signin"):
             SignInView(
                 session: Self.session(state),
-                notice: state == "signin-notice" ? "This device was signed out. Sign in again." : nil,
+                notice: state == "signin-notice" ? AppAuth.signedOutNotice : nil,
                 hasLiDAR: state != "signin-no-lidar"
             )
         case let state where state.hasPrefix("account"):
@@ -268,7 +268,7 @@ struct PreviewHarness: View {
         case "signin", "signin-no-lidar":
             return AccountSession(previewing: .signedOut(notice: nil))
         case "signin-notice":
-            return AccountSession(previewing: .signedOut(notice: "This device was signed out. Sign in again."))
+            return AccountSession(previewing: .signedOut(notice: AppAuth.signedOutNotice))
         case "home-low-credits":
             let low = Account(email: account.email, plan: account.plan, creditBalance: 4, presets: account.presets, running: 0, maxRunning: 2)
             return AccountSession(previewing: .signedIn(credentials), account: low, usage: usage(created: 3), showsPurchaseLinks: true)

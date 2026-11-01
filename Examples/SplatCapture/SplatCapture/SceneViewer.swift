@@ -536,7 +536,7 @@ struct ViewerFailure {
     private static let badRequest = 400
 
     /// The API refused this device's key.
-    static let signedOut = ViewerFailure(title: "Signed out", detail: "This device was signed out. Sign in again.")
+    static let signedOut = ViewerFailure(title: "Signed out", detail: AppAuth.signedOutNotice)
 
     /// The server answered with another format, so this scene has no SPZ.
     static func otherFormat(_ served: String) -> ViewerFailure {

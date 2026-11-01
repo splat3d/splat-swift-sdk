@@ -393,7 +393,7 @@ struct PausedView: View {
     }
 
     var body: some View {
-        Screen(title: "Paused", sceneID: paused.sceneID, headline: paused.title, lead: paused.detail(showsPurchaseLinks: showsPurchaseLinks)) {
+        Screen(title: "Paused", sceneID: paused.sceneID, headline: paused.title, lead: paused.detail(showsPurchaseLinks ? .shown : .hidden)) {
             Section {
                 FactRow(label: "Stopped at") {
                     Text(stoppedAt)

@@ -61,6 +61,13 @@ struct RunProgress: Equatable {
     var bytesTotal: Int64?
 }
 
+/// Whether the app may link to buying credits, which the App Store allows
+/// only in the US storefront.
+enum PurchaseLinks {
+    case shown
+    case hidden
+}
+
 /// A run that stopped before its outcome was known, and can resume.
 struct PausedRun {
 
@@ -197,9 +204,6 @@ final class CaptureModel: ObservableObject {
 
     /// Capture needs LiDAR: SplatScanner records its mesh as points.
     let hasLiDAR: Bool
-    /// Whether the app may link to buying credits (US storefront only):
-    /// set by CaptureRoot from the AccountSession.
-    @Published var showsPurchaseLinks: Bool
     /// A run is on its way or waiting to resume.
     var isRunActive: Bool {
         switch state {
@@ -293,7 +297,6 @@ final class CaptureModel: ObservableObject {
     ) {
         self.client = client
         self.onKeyRejected = onKeyRejected
-        showsPurchaseLinks = false
         self.hasLiDAR = hasLiDAR
         self.cameraAccess = cameraAccess
         self.store = store
@@ -1136,7 +1139,7 @@ extension PausedRun {
 
     /// What the pause says. Built from the error code, never from the API's
     /// message, which sends people to "Upgrade your plan".
-    func detail(showsPurchaseLinks: Bool) -> String {
+    func detail(_ links: PurchaseLinks) -> String {
         switch cause {
         case .connection:
             return "The network dropped before Splat Capture heard back."
@@ -1145,17 +1148,17 @@ extension PausedRun {
         case .appClosed:
             return "Splat Capture closed while this capture was on its way. Resume picks up where it stopped."
         case .insufficientCredits:
-            return showsPurchaseLinks
+            return links == .shown
                 ? "Not enough credits. Add credits, then Resume."
                 : "Not enough credits. Resume once your account has enough credits."
         case .queueFull:
             return "Your plan allows only so many scenes processing at once. Resume when one finishes."
         case .quotaExceeded:
-            return showsPurchaseLinks
+            return links == .shown
                 ? "Monthly limit reached. Change your plan in billing, or Resume next month."
                 : "Monthly limit reached. Resume next month."
         case .keyRejected:
-            return "This device was signed out. Sign in again."
+            return AppAuth.signedOutNotice
         case .timedOut:
             return "Splat Capture stopped waiting, but the job may still finish. Resume keeps watching."
         case .other(let message):

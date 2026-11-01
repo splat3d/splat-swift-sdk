@@ -24,7 +24,7 @@ enum AppAPIError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unauthorized:
-            return "This device was signed out. Sign in again."
+            return AppAuth.signedOutNotice
         case .invalidGrant:
             return "This sign-in expired or was already used. Sign in again."
         case .failed(let message):
@@ -110,11 +110,22 @@ struct PresetCost: Equatable {
     let credits: Int
 }
 
+/// Values shared by the sign-in's two halves: the browser hop and the exchange.
+enum AppAuth {
+    static let clientID = "splatcapture"
+    /// RFC 7636.
+    static let challengeMethod = "S256"
+    /// RFC 6749.
+    static let grantType = "authorization_code"
+    static let signedOutNotice = "This device was signed out. Sign in again."
+}
+
 struct AppAPI {
 
     let baseURL: URL
 
-    private static let clientID = "splatcapture"
+    private static let revokeTimeout: TimeInterval = 10
+    private static let success = 200..<300
     private static let unauthorized = 401
     private static let badRequest = 400
     private static let invalidGrantCode = "invalid_grant"
@@ -126,10 +137,10 @@ struct AppAPI {
     /// failure starts the sign-in over.
     func exchange(code: String, verifier: String) async throws -> AppToken {
         let body = [
-            "grant_type": "authorization_code",
+            "grant_type": AppAuth.grantType,
             "code": code,
             "code_verifier": verifier,
-            "client_id": Self.clientID,
+            "client_id": AppAuth.clientID,
         ]
         var request = makeRequest("POST", "v1/app/token", apiKey: nil)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -143,7 +154,9 @@ struct AppAPI {
 
     /// Revoke the key the call is made with.
     func revokeKey(apiKey: String) async throws {
-        _ = try await data(for: makeRequest("DELETE", "v1/app/key", apiKey: apiKey))
+        var request = makeRequest("DELETE", "v1/app/key", apiKey: apiKey)
+        request.timeoutInterval = Self.revokeTimeout
+        _ = try await data(for: request)
     }
 
     // MARK: Requests
@@ -185,7 +198,7 @@ struct AppAPI {
         guard let http = response as? HTTPURLResponse else {
             throw AppAPIError.failed("The server's answer couldn't be read.")
         }
-        if (200..<300).contains(http.statusCode) {
+        if Self.success.contains(http.statusCode) {
             return body
         }
         if http.statusCode == Self.unauthorized {

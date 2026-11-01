@@ -16,7 +16,6 @@ struct SignInView: View {
     var hasLiDAR = ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
 
     @Environment(\.webAuthenticationSession) private var webAuth
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private static let markSize: CGFloat = 96
 

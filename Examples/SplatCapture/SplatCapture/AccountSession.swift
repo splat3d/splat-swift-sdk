@@ -56,12 +56,10 @@ final class AccountSession {
 
     private static let callbackPath = "/connect/app/callback"
     private static let connectPath = "/connect/app"
-    private static let clientID = "splatcapture"
     private static let usStorefront = "USA"
     private static let accessDenied = "access_denied"
 
     private static let signInFailed = "Sign-in didn't finish. Try again."
-    private static let signedOutNotice = "This device was signed out. Sign in again."
     private static let revokeFailed = "Signed out on this device. If this phone is lost, revoke its key in Dashboard → Developer."
 
     init() {
@@ -95,6 +93,11 @@ final class AccountSession {
     /// Open the website's sign-in in the system browser, and finish with the
     /// code it hands back. Backing out is not a failure: it says nothing.
     func signIn(using webAuth: WebAuthenticationSession) async {
+        #if DEBUG
+        guard !isPreview else {
+            return
+        }
+        #endif
         guard case .signedOut = state else {
             return
         }
@@ -133,6 +136,8 @@ final class AccountSession {
         do {
             let token = try await api.exchange(code: code, verifier: verifier)
             guard Keychain.saveAPIKey(token.apiKey, for: apiURL) else {
+                // The key exists server-side; don't leave it active.
+                try? await api.revokeKey(apiKey: token.apiKey)
                 state = .signedOut(notice: Self.signInFailed)
                 return
             }
@@ -144,13 +149,21 @@ final class AccountSession {
         await refresh()
     }
 
+    /// Why the last sign-in ended, while signed out.
+    var notice: String? {
+        if case .signedOut(let notice) = state {
+            return notice
+        }
+        return nil
+    }
+
     private func connectURL(verifier: String, state: String) -> URL {
         var components = URLComponents(url: AppEnvironment.webURL, resolvingAgainstBaseURL: false)!
         components.path = Self.connectPath
         components.queryItems = [
-            URLQueryItem(name: "client_id", value: Self.clientID),
+            URLQueryItem(name: "client_id", value: AppAuth.clientID),
             URLQueryItem(name: "code_challenge", value: PKCE.challenge(for: verifier)),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "code_challenge_method", value: AppAuth.challengeMethod),
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "device_id", value: Keychain.deviceID()),
         ]
@@ -186,13 +199,15 @@ final class AccountSession {
         forget(notice: notice)
     }
 
-    /// The API refused this device's key (401): sign in again.
-    func keyRejected() {
-        guard case .signedIn = state else {
+    /// The API refused this key (401): sign in again. A key that is no longer
+    /// the signed-in one changes nothing, so a stale caller can't sign out a
+    /// fresh session.
+    func keyRejected(_ rejected: APICredentials) {
+        guard state == .signedIn(rejected) else {
             return
         }
         Keychain.deleteAPIKey(for: apiURL)
-        forget(notice: Self.signedOutNotice)
+        forget(notice: AppAuth.signedOutNotice)
     }
 
     private func forget(notice: String?) {
@@ -226,7 +241,7 @@ final class AccountSession {
         }
 
         if accountResult.isUnauthorized || usageResult.isUnauthorized {
-            keyRejected()
+            keyRejected(credentials)
             return
         }
         if case .success(let account) = accountResult {

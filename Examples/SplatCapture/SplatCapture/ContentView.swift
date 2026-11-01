@@ -186,7 +186,7 @@ struct ContentView: View {
         self.session = session
         _model = StateObject(wrappedValue: CaptureModel(
             credentials: credentials,
-            onKeyRejected: { [weak session] in session?.keyRejected() }
+            onKeyRejected: { [weak session] in session?.keyRejected(credentials) }
         ))
     }
 
@@ -261,9 +261,6 @@ struct CaptureRoot: View {
                 Task { await session.refresh() }
             }
         }
-        .onChange(of: session.showsPurchaseLinks, initial: true) { _, shows in
-            model.showsPurchaseLinks = shows
-        }
         .onChange(of: connectivity.isOnline) { _, online in
             if online {
                 model.networkReturned()
@@ -272,7 +269,10 @@ struct CaptureRoot: View {
     }
 
     private func keyRejected() {
-        session.keyRejected()
+        guard let credentials else {
+            return
+        }
+        session.keyRejected(credentials)
     }
 
     @ViewBuilder
@@ -397,10 +397,19 @@ struct HomeView: View {
     private var presetPicker: some View {
         Picker("Preset", selection: $preset) {
             ForEach(ScenePreset.allCases, id: \.self) { option in
-                Text(option.title)
+                Text(label(of: option))
                     .tag(option)
             }
         }
+    }
+
+    /// Rows have room for the cost; segments only for the title.
+    private func label(of option: ScenePreset) -> String {
+        guard dynamicTypeSize.isAccessibilitySize,
+              let credits = session.account?.presets.first(where: { $0.preset == option })?.credits else {
+            return option.title
+        }
+        return "\(option.title) · \(credits) credits"
     }
 
     /// "800 px · 3K iterations · about 3 min · 10 credits".
