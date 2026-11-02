@@ -16,8 +16,8 @@ struct RecentScenesView: View {
     @State private var pendingDelete: SplatScene?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    init() {
-        _model = StateObject(wrappedValue: RecentScenesModel())
+    init(credentials: AccountSession.APICredentials?, onKeyRejected: @escaping @MainActor () -> Void) {
+        _model = StateObject(wrappedValue: RecentScenesModel(credentials: credentials, onKeyRejected: onKeyRejected))
     }
 
     #if DEBUG
@@ -296,6 +296,8 @@ final class RecentScenesModel: ObservableObject {
     private static let pageSize = 100
 
     private let client: SplatClient?
+    /// The API refused the key (401): the app signs out.
+    private let onKeyRejected: @MainActor () -> Void
     #if DEBUG
     private var isPreview = false
     #endif
@@ -303,9 +305,10 @@ final class RecentScenesModel: ObservableObject {
     /// The rows' thumbnails, loaded through the same client, so with the same key.
     fileprivate let thumbnails: ThumbnailStore
 
-    init() {
-        let client = apiKey.map { SplatClient(apiKey: $0) }
+    init(credentials: AccountSession.APICredentials?, onKeyRejected: @escaping @MainActor () -> Void) {
+        let client = credentials.map { SplatClient(apiKey: $0.apiKey, baseURL: $0.apiURL) }
         self.client = client
+        self.onKeyRejected = onKeyRejected
         thumbnails = ThumbnailStore(client: client)
     }
 
@@ -316,7 +319,7 @@ final class RecentScenesModel: ObservableObject {
         }
         #endif
         guard let client else {
-            state = .failed("This build has no Splat API key. \(missingAPIKeyMessage)")
+            state = .failed("Sign in to see your scenes.")
             return
         }
 
@@ -326,6 +329,9 @@ final class RecentScenesModel: ObservableObject {
         } catch is CancellationError {
             // The list went away, or a refresh replaced this load.
         } catch {
+            if case SplatError.unauthorized = error {
+                onKeyRejected()
+            }
             state = .failed(error.localizedDescription)
         }
     }
@@ -340,6 +346,9 @@ final class RecentScenesModel: ObservableObject {
         do {
             try await client.deleteScene(id: scene.id)
         } catch {
+            if case SplatError.unauthorized = error {
+                onKeyRejected()
+            }
             deleteError = error.localizedDescription
             return
         }
@@ -352,6 +361,7 @@ final class RecentScenesModel: ObservableObject {
     /// A list in a fixed state, with no client, for PreviewHarness.
     init(previewing state: State) {
         client = nil
+        onKeyRejected = {}
         thumbnails = ThumbnailStore(client: nil)
         self.state = state
         isPreview = true
