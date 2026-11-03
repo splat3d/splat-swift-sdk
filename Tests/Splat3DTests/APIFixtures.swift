@@ -124,6 +124,7 @@ enum Fixture {
             "ssim_holdout": null,
             "processing_stage": "training",
             "processing_pct": 45,
+            "eta_seconds": 312,
             "processing_error": null,
             "viewer_url": null,
             "download_url": null,

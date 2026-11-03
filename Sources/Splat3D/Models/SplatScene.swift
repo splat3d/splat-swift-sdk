@@ -165,6 +165,13 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
     /// otherwise, including once complete.
     public let processingPct: Double?
 
+    /// Estimated time until the scene completes while processing, from the
+    /// job's live progress: the estimate the Splat3D dashboard shows. It can
+    /// move either way between polls. `nil` otherwise, including once
+    /// complete, in ``SplatClient/listScenes()`` and its pages, and from
+    /// APIs before it was added.
+    public let estimatedTimeRemaining: TimeInterval?
+
     /// Number of Gaussians in the trained model (available after training completes).
     public let numGaussians: Int?
 
@@ -274,6 +281,7 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         case isPublic = "is_public"
         case processingStage = "processing_stage"
         case processingPct = "processing_pct"
+        case estimatedTimeRemaining = "eta_seconds"
         case numGaussians = "num_gaussians"
         case thumbnailR2Key = "thumbnail_r2_key"
         case thumbnailURLKey = "thumbnail_url"
@@ -309,6 +317,7 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         isPublic = try container.decodeIfPresent(Bool.self, forKey: .isPublic) ?? false
         processingStage = try container.decodeIfPresent(String.self, forKey: .processingStage)
         processingPct = try container.decodeIfPresent(Double.self, forKey: .processingPct)
+        estimatedTimeRemaining = try container.decodeIfPresent(TimeInterval.self, forKey: .estimatedTimeRemaining)
         numGaussians = try container.decodeIfPresent(Int.self, forKey: .numGaussians)
         thumbnailR2Key = try container.decodeIfPresent(String.self, forKey: .thumbnailR2Key)
         processingError = try container.decodeIfPresent(String.self, forKey: .processingError)
@@ -367,6 +376,7 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         try container.encode(isPublic, forKey: .isPublic)
         try container.encodeIfPresent(processingStage, forKey: .processingStage)
         try container.encodeIfPresent(processingPct, forKey: .processingPct)
+        try container.encodeIfPresent(estimatedTimeRemaining, forKey: .estimatedTimeRemaining)
         try container.encodeIfPresent(numGaussians, forKey: .numGaussians)
         try container.encodeIfPresent(thumbnailR2Key, forKey: .thumbnailR2Key)
         // Written, as the string decoding reads, so decoding it again keeps
@@ -405,6 +415,7 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         isPublic: Bool = false,
         processingStage: String? = nil,
         processingPct: Double? = nil,
+        estimatedTimeRemaining: TimeInterval? = nil,
         numGaussians: Int? = nil,
         thumbnailURL: URL? = nil,
         processingError: String? = nil,
@@ -430,6 +441,7 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
         self.isPublic = isPublic
         self.processingStage = processingStage
         self.processingPct = processingPct
+        self.estimatedTimeRemaining = estimatedTimeRemaining
         self.numGaussians = numGaussians
         self.thumbnailURL = thumbnailURL
         self.thumbnailR2Key = thumbnailURL != nil ? "scenes/\(id)/thumbnail.jpg" : nil
@@ -459,6 +471,7 @@ public struct SplatScene: Codable, Identifiable, Sendable, Equatable {
             && lhs.isPublic == rhs.isPublic
             && lhs.processingStage == rhs.processingStage
             && lhs.processingPct == rhs.processingPct
+            && lhs.estimatedTimeRemaining == rhs.estimatedTimeRemaining
             && lhs.numGaussians == rhs.numGaussians
             && lhs.processingError == rhs.processingError
             && lhs.viewerURL == rhs.viewerURL

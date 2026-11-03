@@ -358,6 +358,16 @@ extension SplatClientTests {
         XCTAssertEqual(scene.modelSizes, SplatScene.ModelSizes())
     }
 
+    func testTheEstimateDecodesWhileProcessing() async throws {
+        // GET /v1/scenes/{id} answers eta_seconds while the job runs (S3D-600).
+        let training = try await scene(from: Fixture.trainingScene)
+        XCTAssertEqual(training.estimatedTimeRemaining, 312)
+
+        // Complete scenes, and APIs from before it, have none.
+        let complete = try await scene(from: Fixture.completeScene)
+        XCTAssertNil(complete.estimatedTimeRemaining)
+    }
+
     func testNullDetailsReadNil() async throws {
         let scene = try await scene(from: Fixture.completeSceneWithNullDetails)
 
