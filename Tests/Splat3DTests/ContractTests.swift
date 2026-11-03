@@ -59,9 +59,11 @@ final class ContractTests: XCTestCase {
             "missing data.upload_url",
         ]),
         FixtureCase("completeScene", Fixture.completeScene, "getScene", 200),
-        FixtureCase("trainingScene", Fixture.trainingScene, "getScene", 200),
+        // API 1.8.0's eta_seconds (gaussian-splatting PR #515), which the
+        // pinned 1.3.0 spec doesn't declare. Empty once the spec is refreshed.
+        FixtureCase("trainingScene", Fixture.trainingScene, "getScene", 200, deviations: ["undeclared data.eta_seconds"]),
         FixtureCase("uploadingScene", Fixture.uploadingScene, "getScene", 200),
-        FixtureCase("estimatingPosesScene", Fixture.estimatingPosesScene, "getScene", 200),
+        FixtureCase("estimatingPosesScene", Fixture.estimatingPosesScene, "getScene", 200, deviations: ["undeclared data.eta_seconds"]),
         FixtureCase("failedLaunchScene", Fixture.failedLaunchScene, "getScene", 200),
         FixtureCase("sweptScene", Fixture.sweptScene, "getScene", 200),
         FixtureCase("cancelledScene", Fixture.cancelledScene, "getScene", 200),
