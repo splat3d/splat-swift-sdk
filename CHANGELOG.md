@@ -2,6 +2,13 @@
 
 All notable changes to Splat3D. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Added
+
+- `SplatScene.estimatedTimeRemaining`: the API's `eta_seconds`, an estimate of the
+  time left while a scene processes. `nil` otherwise and from older APIs.
+
 ## 1.0.0
 
 ### Breaking changes
