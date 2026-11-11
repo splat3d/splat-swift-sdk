@@ -13,7 +13,7 @@ import Splat3D
 //     capture.mp4   the video SplatScanner recorded (needed to upload again)
 //     launch.json   ARKit poses and LiDAR points, what the launch resends
 //     run.json      preset, title, the scene ID once it exists, how the
-//                   run failed if it did, and for an object scan the
+//                   run failed if it did, and for a masked scan the
 //                   object picked
 //
 // JSONEncoder writes every Float and Double so it reads back to the same
@@ -34,7 +34,7 @@ struct CaptureStore {
         /// Set while the capture waits for Upload whole scene or Scan one
         /// object, so a relaunch asks again instead of uploading.
         var choice: Choice?
-        /// The object an object scan keeps. `nil` for a whole scene.
+        /// The object a masked scan keeps. `nil` for a whole scene.
         var subject: ObjectPick?
     }
 

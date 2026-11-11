@@ -8,8 +8,8 @@ import Splat3D
 // 1. Your API key is read at runtime from the SPLAT_API_KEY build setting.
 //    Copy Secrets.example.xcconfig to Secrets.xcconfig (git ignores it) and set
 //    it there. Never put a key in source: this repository is public.
-//    SPLAT_API_HOST and SPLAT_OBJECT_SCAN, in SplatCapture.xcconfig, point a
-//    build at another API and switch on object scans.
+//    SPLAT_API_HOST and SPLAT_MASKING, in SplatCapture.xcconfig, point a
+//    build at another API and switch on masking.
 // 2. The SDK entry points used in this app:
 //    - SplatScanner  — captures video + ARKit poses (CaptureModel.swift)
 //    - SplatClient   — uploads and processes via the Splat API, resumes an
@@ -19,7 +19,7 @@ import Splat3D
 //                      their SPZ (SceneViewer.swift)
 //    - ARKitPose     — pose format sent to the API (handled internally by
 //                      SplatScanner, and saved by CaptureStore.swift)
-//    - SceneSubject  — the one object an object scan keeps, picked in
+//    - SceneSubject  — the one object a masked scan keeps, picked in
 //                      ObjectPickView.swift
 // 3. SplatKit (github.com/Xget7/splatkit-ios, MIT) draws the downloaded scene
 //    natively: see SplatWorldView.swift.
@@ -47,11 +47,11 @@ let apiBaseURL: URL? = {
 /// A build setting that is switched on, as an xcconfig writes it.
 private let buildSettingOn = "YES"
 
-/// Whether "Scan one object" is offered after a recording: the
-/// `SPLAT_OBJECT_SCAN` build setting, through the `SplatObjectScan`
-/// Info.plist entry. Off by default, because the production API refuses
-/// object scans with 403 `feature_disabled` until it switches them on.
-let objectScanEnabled = Bundle.main.object(forInfoDictionaryKey: "SplatObjectScan") as? String == buildSettingOn
+/// Whether "Mask an object" is offered after a recording: the
+/// `SPLAT_MASKING` build setting, through the `SplatMasking`
+/// Info.plist entry. On by default: the production API does masking. An API
+/// with it switched off refuses with 403 `feature_disabled`.
+let maskingEnabled = Bundle.main.object(forInfoDictionaryKey: "SplatMasking") as? String == buildSettingOn
 
 /// A client for this build's API: production, unless `SPLAT_API_HOST` names
 /// another.
@@ -623,9 +623,9 @@ struct ScanningView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// With object scans switched on, Stop asks what to keep before it
+    /// With masking switched on, Stop asks what to keep before it
     /// uploads anything.
-    private static let stopTitle = objectScanEnabled ? "Stop" : "Stop and upload"
+    private static let stopTitle = maskingEnabled ? "Stop" : "Stop and upload"
 
     private var stopButton: some View {
         Button(Self.stopTitle) {

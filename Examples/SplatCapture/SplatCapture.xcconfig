@@ -9,11 +9,11 @@
 
 SPLAT_API_KEY =
 
-// Object scans: after a recording, "Scan one object" picks the one object the
-// scene keeps. NO by default: the production API answers 403 feature_disabled
-// until object scans are switched on there. Set YES in Secrets.xcconfig to
-// try them against an API that has them.
-SPLAT_OBJECT_SCAN = NO
+// Masking: after a recording, "Mask an object" picks the one object the
+// scene keeps. YES by default: the production API does masking. Set NO in
+// Secrets.xcconfig for an API with masking switched off, which answers 403
+// feature_disabled.
+SPLAT_MASKING = YES
 
 // The API's host, for a build that talks to another API than production.
 // The host alone, such as api.example.com: an xcconfig reads // as the start

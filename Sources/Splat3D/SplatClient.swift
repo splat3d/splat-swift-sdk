@@ -282,12 +282,12 @@ public final class SplatClient: Sendable {
     /// - Parameters:
     ///   - title: Optional title for the scene.
     ///   - preset: Processing quality preset. Defaults to `.standard`.
-    ///   - subject: The one object to keep, for an object scan. `nil`, the
+    ///   - subject: The one object to keep, for a masked scan. `nil`, the
     ///     default, makes a normal scene.
     /// - Returns: A tuple of the created scene's ID and a presigned upload URL.
     /// - Throws: ``SplatError`` on network or API errors, and
     ///   ``SplatError/requestFailed(_:)`` with status 403 and code
-    ///   `feature_disabled` for a `subject` where object scans are off.
+    ///   `feature_disabled` for a `subject` where masking is off.
     public func createScene(
         title: String? = nil,
         preset: SceneParams = .standard,
@@ -735,7 +735,7 @@ public final class SplatClient: Sendable {
     ///   - videoURL: Local file URL of the video to upload.
     ///   - title: Optional title for the scene.
     ///   - preset: Processing quality preset. Defaults to `.standard`.
-    ///   - subject: The one object to keep, for an object scan. `nil`, the
+    ///   - subject: The one object to keep, for a masked scan. `nil`, the
     ///     default, makes a normal scene. The scene keeps it, so neither
     ///     `resume` takes it.
     ///   - arkitPoses: Optional ARKit camera poses to skip SfM.
@@ -746,7 +746,7 @@ public final class SplatClient: Sendable {
     /// - Returns: The completed scene.
     /// - Throws: The creation error if the scene could not be created, e.g.
     ///           ``SplatError/requestFailed(_:)`` with status 403 and code
-    ///           `feature_disabled` for a `subject` where object scans are
+    ///           `feature_disabled` for a `subject` where masking is
     ///           off: nothing was created or charged. If the
     ///           task is cancelled while the scene is being created, a plain
     ///           `CancellationError`: the API may have created it anyway, and

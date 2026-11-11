@@ -6,13 +6,13 @@ All notable changes to Splat3D. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
-- Object scans: `SceneSubject`, a moment in the video and 1 to 5 points on one
+- Masking: `SceneSubject`, a moment in the video and 1 to 5 points on one
   object, which the scene then keeps alone. Pass it as the new `subject`
   argument of `createScene` and `createAndProcess`; `nil`, the default, makes
   a normal scene, and existing calls compile unchanged. `SceneSubject.init`
   throws `SceneSubject.Invalid` for a value the API would refuse, before
   anything is sent.
-- Object scans are not enabled in production yet: a create with a subject
+- An API with masking switched off refuses: a create with a subject
   throws `SplatError.requestFailed` with status 403 and code
   `feature_disabled`.
 

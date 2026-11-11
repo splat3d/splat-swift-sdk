@@ -1,7 +1,7 @@
 import XCTest
 @testable import Splat3D
 
-// MARK: - Object scan tests
+// MARK: - Masking tests
 //
 // A subject is one moment in the video and 1 to 5 points on one object. It is
 // checked when it is made, so a bad one never reaches a request, and create
@@ -9,7 +9,7 @@ import XCTest
 
 extension SplatClientTests {
 
-    /// 403 from createScene while object scans are off (api/src/lib/scenes.ts
+    /// 403 from createScene while masking is off (api/src/lib/scenes.ts
     /// in gaussian-splatting PR #525).
     private static let featureDisabled = Fixture.error("feature_disabled", "Object scans are not available.")
 
@@ -135,7 +135,7 @@ extension SplatClientTests {
         XCTAssertTrue(MockURLProtocol.capturedRequests.isEmpty)
     }
 
-    // MARK: - Object scans switched off
+    // MARK: - Masking switched off
 
     func testFeatureDisabledIsRecognizable() async throws {
         MockURLProtocol.stub("/v1/scenes", .json(403, Self.featureDisabled))

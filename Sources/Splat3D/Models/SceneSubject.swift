@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - SceneSubject
 
-/// The one object an object scan keeps: a moment in the video, and 1 to 5
+/// The one object a masked scan keeps: a moment in the video, and 1 to 5
 /// points on the object in that frame. The pipeline finds the object in every
 /// frame from them and trains only it.
 ///
@@ -16,7 +16,7 @@ import Foundation
 /// rotation applied, from the top-left corner, without any letterbox bars.
 /// `(0.5, 0.5)` is the center.
 ///
-/// Where object scans are switched off, creating a scene with a subject throws
+/// Where masking is switched off, creating a scene with a subject throws
 /// ``SplatError/requestFailed(_:)`` with status 403 and code `feature_disabled`.
 public struct SceneSubject: Sendable, Equatable {
 

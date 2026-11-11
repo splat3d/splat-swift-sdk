@@ -79,7 +79,7 @@ let scene = try await client.createAndProcess(
 
 **Record at least 30 seconds.** The API refuses a shorter video with a 422 `source_unusable` when it is launched, before charging anything, and the scene stays `uploading`. `createAndProcess` throws that as `SplatError.interrupted`, and `resume` meets the same refusal, so delete the scene. `SplatScanner` has no minimum: time the scan yourself. The [SplatCapture](Examples/SplatCapture) example asks to keep recording or discard when Stop comes sooner.
 
-## Object scans
+## Masking
 
 Pass a `SceneSubject` to keep one object instead of everything the camera saw. It names the object by 1 to 5 points on it in one frame of the video. The pipeline finds the object in every frame and trains only it. The price is the preset's.
 
@@ -99,15 +99,15 @@ let scene = try await client.createAndProcess(
 - `timeSeconds` is the frame's time in the video, as `AVPlayer.currentTime()` reports it.
 - Each point is a fraction of the frame as a player shows it, from 0 to 1: the track's `preferredTransform` applied, measured from the top-left corner, inside the picture and not its letterbox bars.
 - `SceneSubject.init` throws `SceneSubject.Invalid` for a time before 0, no points, more than five, or a point outside the frame. Nothing is sent.
-- **Object scans are not enabled in production yet.** Until they are, a create with a subject throws `SplatError.requestFailed` with status 403 and code `feature_disabled`, and nothing is created or charged:
+- An API with masking switched off refuses: a create with a subject throws `SplatError.requestFailed` with status 403 and code `feature_disabled`, and nothing is created or charged:
 
 ```swift
 } catch SplatError.requestFailed(let error) where error.code == "feature_disabled" {
-    // Object scans are off: create the scene without a subject
+    // Masking is off: create the scene without a subject
 }
 ```
 
-The scene keeps its subject, so `resume` and `retrainScene` take none. The [SplatCapture](Examples/SplatCapture) example has a picker behind a build setting: see [ObjectPickView.swift](Examples/SplatCapture/SplatCapture/ObjectPickView.swift).
+The scene keeps its subject, so `resume` and `retrainScene` take none. The [SplatCapture](Examples/SplatCapture) example has a picker: see [ObjectPickView.swift](Examples/SplatCapture/SplatCapture/ObjectPickView.swift).
 
 ## View scenes in 3D
 

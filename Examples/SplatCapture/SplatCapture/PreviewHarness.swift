@@ -37,7 +37,7 @@ struct PreviewHarness: View {
         "paused-connection", "paused-background", "paused-app-closed", "paused-not-created",
         "paused-credits", "paused-queue", "paused-quota", "paused-timeout",
         "failed-processing", "failed-upload-lost", "failed-cancelled", "failed-unusable",
-        "failed-object-scan-off",
+        "failed-masking-off",
         "complete", "complete-delete-error",
         "scenes", "scenes-empty", "scenes-error",
         "viewer-downloading", "viewer-undrawable", "viewer-no-spz", "viewer-orbit", "viewer-look",
@@ -212,7 +212,7 @@ struct PreviewHarness: View {
         case "failed-unusable":
             let unusable = refusal(422, "source_unusable", "The uploaded file is empty.")
             return .preview(outcome(interruption(.launch, SplatError.requestFailed(unusable))))
-        case "failed-object-scan-off":
+        case "failed-masking-off":
             let disabled = refusal(403, "feature_disabled", "Object scans are not available.")
             return .preview(outcome(SplatError.requestFailed(disabled), sceneID: nil))
         case "complete":

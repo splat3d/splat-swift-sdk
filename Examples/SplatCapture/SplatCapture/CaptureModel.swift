@@ -21,14 +21,14 @@ import Splat3D
 // picks up by itself on the next launch, through
 // client.resume(sceneID:preset:…). A run that had failed comes back failed.
 //
-// With object scans switched on (SPLAT_OBJECT_SCAN), Stop saves the capture
+// With masking switched on (SPLAT_MASKING), Stop saves the capture
 // and asks what to keep before anything is sent:
 //
 //   scanning ── Stop ──> captured ── Upload whole scene ──────────> running
 //                           │  ▲                                     ▲
-//           Scan one object │  │ Choose again (from failed)          │
+//           Mask an object │  │ Choose again (from failed)          │
 //                           ▼  │                                     │
-//                     ObjectPickView ── Upload object scan ──────────┘
+//                     ObjectPickView ── Upload masked scan ──────────┘
 //                                       createAndProcess(subject:)
 //
 // Leaving the app asks iOS for background time. When it runs out the run is
@@ -41,7 +41,7 @@ enum CaptureState {
     case idle
     case scanning
     /// The capture is saved and waits to be told what to keep: the whole
-    /// scene or one object. Only with object scans switched on.
+    /// scene or one object. Only with masking switched on.
     case captured
     case running(RunProgress)
     case paused(PausedRun)
@@ -115,7 +115,7 @@ struct FailedRun: Codable, Equatable {
         case uploadAgain
         /// The scene failed or is gone: process the saved capture as a new scene.
         case processAgain
-        /// An object scan didn't go through: back to the saved capture, to
+        /// A masked scan didn't go through: back to the saved capture, to
         /// pick the object again or upload the whole scene.
         case chooseAgain
     }
@@ -220,7 +220,7 @@ final class CaptureModel: ObservableObject {
     /// The saved capture's video, for the object picker.
     var captureVideoURL: URL { store.videoURL }
 
-    /// The object picked for the saved capture, if it was an object scan:
+    /// The object picked for the saved capture, if it was a masked scan:
     /// where the picker starts when it opens again.
     var savedPick: ObjectPick? { store.loadRun()?.subject }
 
@@ -392,7 +392,7 @@ final class CaptureModel: ObservableObject {
     }
 
     /// Stop recording, keep the capture on disk, then upload and process it.
-    /// With object scans switched on, it asks what to keep before uploading.
+    /// With masking switched on, it asks what to keep before uploading.
     func stopAndUpload(preset: ScenePreset) async {
         stopScanTimers()
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -417,17 +417,17 @@ final class CaptureModel: ObservableObject {
             return
         }
 
-        guard objectScanEnabled else {
+        guard maskingEnabled else {
             uploadSavedCapture()
             return
         }
         awaitChoice()
     }
 
-    // MARK: - Splat3D Integration: Object scan
+    // MARK: - Splat3D Integration: Masking
     //
     // The saved capture waits on the captured screen. Upload whole scene
-    // sends it as before. Scan one object opens ObjectPickView, whose pick
+    // sends it as before. Mask an object opens ObjectPickView, whose pick
     // is saved with the run, so Upload again and a resume after a relaunch
     // send the same object.
 
@@ -446,14 +446,14 @@ final class CaptureModel: ObservableObject {
         do {
             try store.saveSubject(pick)
         } catch {
-            // Uploading anyway would send the whole scene for an object scan.
+            // Uploading anyway would send the whole scene for a masked scan.
             fail(FailedRun(title: "Couldn't save your choice", detail: error.localizedDescription, charges: "Nothing was sent or charged.", sceneID: nil, retry: .chooseAgain))
             return
         }
         uploadSavedCapture()
     }
 
-    /// An object scan didn't go through: back to the captured screen, to
+    /// A masked scan didn't go through: back to the captured screen, to
     /// pick the object again or upload the whole scene.
     func chooseAgain() {
         guard case .failed(let failed) = state else {
@@ -468,7 +468,7 @@ final class CaptureModel: ObservableObject {
         awaitChoice()
     }
 
-    /// A failed object scan gets its choice back. Process again would send
+    /// A failed masked scan gets its choice back. Process again would send
     /// the same points, which is what failed when the pipeline couldn't find
     /// the object at them.
     private func offeringChoice(_ failed: FailedRun) -> FailedRun {
@@ -516,7 +516,7 @@ final class CaptureModel: ObservableObject {
         // createAndProcess creates the scene, uploads the video, launches
         // processing and polls until it finishes. The poses and points
         // come back from disk, so a resume after a relaunch sends exactly
-        // the same launch. A subject makes it an object scan: the scene
+        // the same launch. A subject makes it a masked scan: the scene
         // keeps it, so resume doesn't send it again.
         try await client.createAndProcess(
             videoURL: store.videoURL,
@@ -1008,7 +1008,7 @@ enum RunOutcome {
         static let sourceMissing = "source_missing"
         static let sourceUnusable = "source_unusable"
         static let conflict = "conflict"
-        /// Create's 403 for a subject where object scans are switched off.
+        /// Create's 403 for a subject where masking is switched off.
         static let featureDisabled = "feature_disabled"
     }
 
@@ -1113,8 +1113,8 @@ enum RunOutcome {
             )
         case SplatError.requestFailed(let refusal) where refusal.code == Code.featureDisabled:
             return FailedRun(
-                title: "Object scans aren't switched on",
-                detail: "This API doesn't take object scans yet. Upload the whole scene instead.",
+                title: "Masking isn't switched on",
+                detail: "This API doesn't do masking yet. Upload the whole scene instead.",
                 charges: "Nothing was created or charged.",
                 sceneID: sceneID,
                 retry: .chooseAgain

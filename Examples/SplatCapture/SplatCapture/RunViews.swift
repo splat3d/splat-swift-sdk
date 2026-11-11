@@ -4,7 +4,7 @@ import Splat3D
 // MARK: - Run screens
 //
 // One screen per CaptureState after the scan: running, paused, failed and
-// complete. Captured, which object scans add, is in ObjectPickView.swift.
+// complete. Captured, which masking adds, is in ObjectPickView.swift.
 
 /// Where to add credits: the billing page of the Splat3D dashboard.
 let billingURL = URL(string: "https://splat-3d.com/dashboard/settings/billing")!

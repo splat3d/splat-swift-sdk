@@ -2,13 +2,13 @@ import SwiftUI
 import AVFoundation
 import Splat3D
 
-// MARK: - Splat3D Integration: Object scan
+// MARK: - Splat3D Integration: Masking
 //
-// An object scan keeps one object instead of everything the camera saw. The
+// A masked scan keeps one object instead of everything the camera saw. The
 // API is told which by a SceneSubject: one moment in the video, and 1 to 5
 // points on the object in that frame.
 //
-//   CapturedView ── Scan one object ──> ObjectPickView
+//   CapturedView ── Mask an object ──> ObjectPickView
 //                                         │  scrub to a frame   ──> the time
 //                                         │  tap the object     ──> the points
 //                                         ▼
@@ -18,10 +18,10 @@ import Splat3D
 // browser's video.currentTime uses. The points are fractions of the frame as
 // the player shows it: PickGeometry.swift turns a tap into one.
 //
-// Only shown when the SPLAT_OBJECT_SCAN build setting is YES: the production
-// API answers 403 feature_disabled until object scans are switched on there.
+// Only shown when the SPLAT_MASKING build setting is YES, the default. An
+// API with masking switched off answers 403 feature_disabled.
 
-/// The object picked for an object scan, as CaptureStore keeps it with the
+/// The object picked for a masked scan, as CaptureStore keeps it with the
 /// run: Upload again and a resume after a relaunch send the same object.
 struct ObjectPick: Codable, Equatable {
 
@@ -45,7 +45,7 @@ struct ObjectPick: Codable, Equatable {
 /// pick the one object to keep.
 struct CapturedView: View {
     let videoURL: URL
-    /// The last pick, when an object scan failed: the picker starts there.
+    /// The last pick, when a masked scan failed: the picker starts there.
     let previousPick: ObjectPick?
     /// `nil` uploads the whole scene.
     let onUpload: (ObjectPick?) -> Void
@@ -64,7 +64,7 @@ struct CapturedView: View {
                 FactRow(label: "Whole scene", layout: .stacked) {
                     Text("Everything the camera saw.")
                 }
-                if objectScanEnabled {
+                if maskingEnabled {
                     FactRow(label: "One object", layout: .stacked) {
                         Text("Tap the object in one frame of the video. Splat3D finds it in every frame and keeps only it, at the same price.")
                     }
@@ -76,10 +76,10 @@ struct CapturedView: View {
             }
             .actionStyle(.primary)
 
-            // A build without object scans can still meet a capture that
+            // A build without masking can still meet a capture that
             // waited here: it uploads whole.
-            if objectScanEnabled {
-                Button("Scan one object") {
+            if maskingEnabled {
+                Button("Mask an object") {
                     isPicking = true
                 }
                 .actionStyle(.secondary)
@@ -282,7 +282,7 @@ struct ObjectPickView: View {
                 controls
             }
             .background(Palette.ground)
-            .navigationTitle("Pick the object")
+            .navigationTitle("Mask an object")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -290,7 +290,7 @@ struct ObjectPickView: View {
                 }
             }
             .actionBar {
-                Button("Upload object scan") {
+                Button("Upload masked scan") {
                     guard let pick = picker.pick else {
                         return
                     }

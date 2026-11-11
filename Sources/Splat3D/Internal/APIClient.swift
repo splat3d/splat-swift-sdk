@@ -136,8 +136,8 @@ extension SplatError {
         /// `unauthorized`, `forbidden`, `not_found`, `conflict`,
         /// `payload_too_large`, `insufficient_credits`, `rate_limited`,
         /// `quota_exceeded`, `internal_error`, `upstream_error` or
-        /// `feature_disabled` (403: a ``SceneSubject`` where object scans
-        /// are switched off).
+        /// `feature_disabled` (403: a ``SceneSubject`` where masking
+        /// is switched off).
         ///
         /// `nil` when the body was not an API error envelope: a request that
         /// failed schema validation, an edge rate limit, or a storage upload
