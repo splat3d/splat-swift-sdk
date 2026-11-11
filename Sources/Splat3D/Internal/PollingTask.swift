@@ -22,7 +22,7 @@ enum SceneEvidence {
 /// Polls a scene's status at regular intervals until it reaches a terminal state.
 ///
 /// Backs ``SplatClient/waitForScene(id:onProgress:)``,
-/// ``SplatClient/createAndProcess(videoURL:title:preset:arkitPoses:lidarPoints:onProgress:onSceneCreated:)``
+/// ``SplatClient/createAndProcess(videoURL:title:preset:subject:arkitPoses:lidarPoints:onProgress:onSceneCreated:)``
 /// and ``SplatClient/resume(_:onProgress:)``.
 ///
 ///   poll ──> complete ─────────────> return

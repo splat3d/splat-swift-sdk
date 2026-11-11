@@ -21,6 +21,8 @@
 		A1000028229F0001 /* RunViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000029229F0001 /* RunViews.swift */; };
 		A100002A229F0001 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100002B229F0001 /* Theme.swift */; };
 		A100002C229F0001 /* PreviewHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100002D229F0001 /* PreviewHarness.swift */; };
+		A1000039229F0001 /* ObjectPickView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100003A229F0001 /* ObjectPickView.swift */; };
+		A100003B229F0001 /* PickGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100003C229F0001 /* PickGeometry.swift */; };
 		A100002E229F0001 /* HankenGrotesk-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A100002F229F0001 /* HankenGrotesk-Variable.ttf */; };
 		A1000030229F0001 /* MartianMono-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A1000031229F0001 /* MartianMono-Variable.ttf */; };
 		A1000032229F0001 /* OFL-HankenGrotesk.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1000033229F0001 /* OFL-HankenGrotesk.txt */; };
@@ -43,6 +45,8 @@
 		A1000029229F0001 /* RunViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RunViews.swift"; sourceTree = "<group>"; };
 		A100002B229F0001 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Theme.swift"; sourceTree = "<group>"; };
 		A100002D229F0001 /* PreviewHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreviewHarness.swift"; sourceTree = "<group>"; };
+		A100003A229F0001 /* ObjectPickView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ObjectPickView.swift"; sourceTree = "<group>"; };
+		A100003C229F0001 /* PickGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PickGeometry.swift"; sourceTree = "<group>"; };
 		A100002F229F0001 /* HankenGrotesk-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HankenGrotesk-Variable.ttf"; sourceTree = "<group>"; };
 		A1000031229F0001 /* MartianMono-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MartianMono-Variable.ttf"; sourceTree = "<group>"; };
 		A1000033229F0001 /* OFL-HankenGrotesk.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-HankenGrotesk.txt"; sourceTree = "<group>"; };
@@ -67,6 +71,7 @@
 			children = (
 				A100001A229F0001 /* SplatCapture.xcconfig */,
 				A1000009229F0001 /* SplatCapture */,
+				A100003D229F0001 /* PickGeometry */,
 				A100000A229F0001 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -79,6 +84,7 @@
 				A1000025229F0001 /* CaptureModel.swift */,
 				A1000027229F0001 /* CaptureStore.swift */,
 				A1000029229F0001 /* RunViews.swift */,
+				A100003A229F0001 /* ObjectPickView.swift */,
 				A1000020229F0001 /* RecentScenesView.swift */,
 				A100001E229F0001 /* SceneViewer.swift */,
 				A1000038229F0001 /* SceneInfo.swift */,
@@ -101,6 +107,14 @@
 				A1000035229F0001 /* OFL-MartianMono.txt */,
 			);
 			path = Fonts;
+			sourceTree = "<group>";
+		};
+		A100003D229F0001 /* PickGeometry */ = {
+			isa = PBXGroup;
+			children = (
+				A100003C229F0001 /* PickGeometry.swift */,
+			);
+			path = PickGeometry;
 			sourceTree = "<group>";
 		};
 		A100000A229F0001 /* Products */ = {
@@ -198,6 +212,8 @@
 				A1000028229F0001 /* RunViews.swift in Sources */,
 				A100002A229F0001 /* Theme.swift in Sources */,
 				A100002C229F0001 /* PreviewHarness.swift in Sources */,
+				A1000039229F0001 /* ObjectPickView.swift in Sources */,
+				A100003B229F0001 /* PickGeometry.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

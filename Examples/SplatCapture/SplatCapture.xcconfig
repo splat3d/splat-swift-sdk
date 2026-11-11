@@ -9,6 +9,18 @@
 
 SPLAT_API_KEY =
 
+// Masking: after a recording, "Mask an object" picks the one object the
+// scene keeps. YES by default: the production API does masking. Set NO in
+// Secrets.xcconfig for an API with masking switched off, which answers 403
+// feature_disabled.
+SPLAT_MASKING = YES
+
+// The API's host, for a build that talks to another API than production.
+// The host alone, such as api.example.com: an xcconfig reads // as the start
+// of a comment, so the app adds https:// itself. Empty means production. Set
+// it in Secrets.xcconfig, beside a key that API accepts.
+SPLAT_API_HOST =
+
 // The version people see, and the build number. TestFlight refuses a build
 // number it has seen for this version: raise it for every upload.
 MARKETING_VERSION = 1.0.0

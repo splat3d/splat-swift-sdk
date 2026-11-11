@@ -6,8 +6,12 @@
 	<string>SplatCapture needs camera access to scan 3D scenes with ARKit.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>SplatCapture needs motion data to track camera poses for 3D reconstruction.</string>
+	<key>SplatAPIHost</key>
+	<string>$(SPLAT_API_HOST)</string>
 	<key>SplatAPIKey</key>
 	<string>$(SPLAT_API_KEY)</string>
+	<key>SplatMasking</key>
+	<string>$(SPLAT_MASKING)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>HankenGrotesk-Variable.ttf</string>

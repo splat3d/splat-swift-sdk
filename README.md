@@ -79,6 +79,36 @@ let scene = try await client.createAndProcess(
 
 **Record at least 30 seconds.** The API refuses a shorter video with a 422 `source_unusable` when it is launched, before charging anything, and the scene stays `uploading`. `createAndProcess` throws that as `SplatError.interrupted`, and `resume` meets the same refusal, so delete the scene. `SplatScanner` has no minimum: time the scan yourself. The [SplatCapture](Examples/SplatCapture) example asks to keep recording or discard when Stop comes sooner.
 
+## Masking
+
+Pass a `SceneSubject` to keep one object instead of everything the camera saw. It names the object by 1 to 5 points on it in one frame of the video. The pipeline finds the object in every frame and trains only it. The price is the preset's.
+
+```swift
+let subject = try SceneSubject(
+    timeSeconds: 12.4,
+    points: [CGPoint(x: 0.52, y: 0.61), CGPoint(x: 0.5, y: 0.7)]
+)
+
+let scene = try await client.createAndProcess(
+    videoURL: capture.videoURL,
+    subject: subject,
+    arkitPoses: capture.poses
+)
+```
+
+- `timeSeconds` is the frame's time in the video, as `AVPlayer.currentTime()` reports it.
+- Each point is a fraction of the frame as a player shows it, from 0 to 1: the track's `preferredTransform` applied, measured from the top-left corner, inside the picture and not its letterbox bars.
+- `SceneSubject.init` throws `SceneSubject.Invalid` for a time before 0, no points, more than five, or a point outside the frame. Nothing is sent.
+- An API with masking switched off refuses: a create with a subject throws `SplatError.requestFailed` with status 403 and code `feature_disabled`, and nothing is created or charged:
+
+```swift
+} catch SplatError.requestFailed(let error) where error.code == "feature_disabled" {
+    // Masking is off: create the scene without a subject
+}
+```
+
+The scene keeps its subject, so `resume` and `retrainScene` take none. The [SplatCapture](Examples/SplatCapture) example has a picker: see [ObjectPickView.swift](Examples/SplatCapture/SplatCapture/ObjectPickView.swift).
+
 ## View scenes in 3D
 
 Pass `.spz` to `downloadScene` to get Niantic's compressed splat format, which native renderers such as [SplatKit](https://github.com/Xget7/splatkit-ios) load:
@@ -101,7 +131,7 @@ SplatKit assumes the World Labs layout, +Y down, and rotates every SPZ 180 degre
 
 | Method | Description |
 |--------|-------------|
-| `createScene(title:preset:)` | Create a scene and get a presigned upload URL |
+| `createScene(title:preset:subject:)` | Create a scene and get a presigned upload URL |
 | `uploadVideo(from:to:)` | Upload a video file to the presigned URL |
 | `processScene(id:arkitPoses:lidarPoints:enableLOD:idempotencyKey:)` | Trigger GPU processing |
 | `waitForScene(id:onProgress:)` | Poll a scene until processing finishes |
@@ -117,7 +147,7 @@ SplatKit assumes the World Labs layout, +Y down, and rotates every SPZ 180 degre
 | `getSceneThumbnail(id:)` | Thumbnail image data |
 | `getUsage()` | Usage this billing period and plan limits |
 | `deleteScene(id:)` | Delete a scene and all files |
-| `createAndProcess(videoURL:title:preset:arkitPoses:lidarPoints:onProgress:onSceneCreated:)` | Full flow in one call |
+| `createAndProcess(videoURL:title:preset:subject:arkitPoses:lidarPoints:onProgress:onSceneCreated:)` | Full flow in one call |
 
 `listScenes()` is deprecated: it returns only the first page.
 

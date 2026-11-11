@@ -12,8 +12,9 @@ import Splat3D
 //   Application Support/Capture/
 //     capture.mp4   the video SplatScanner recorded (needed to upload again)
 //     launch.json   ARKit poses and LiDAR points, what the launch resends
-//     run.json      preset, title, the scene ID once it exists, and how
-//                   the run failed if it did
+//     run.json      preset, title, the scene ID once it exists, how the
+//                   run failed if it did, and for a masked scan the
+//                   object picked
 //
 // JSONEncoder writes every Float and Double so it reads back to the same
 // value, so the rebuilt launch body matches the original byte for byte.
@@ -30,6 +31,16 @@ struct CaptureStore {
         let createdAt: Date
         /// Set when the run ended for good: a relaunch shows it again.
         var failure: FailedRun?
+        /// Set while the capture waits for Upload whole scene or Scan one
+        /// object, so a relaunch asks again instead of uploading.
+        var choice: Choice?
+        /// The object a masked scan keeps. `nil` for a whole scene.
+        var subject: ObjectPick?
+    }
+
+    /// Whether the capture still waits to be told what to keep.
+    enum Choice: String, Codable {
+        case pending
     }
 
     /// What resume must resend exactly.
@@ -83,6 +94,20 @@ struct CaptureStore {
     /// Record how the run failed, or `nil` when a new run starts.
     func saveFailure(_ failure: FailedRun?) throws {
         try update { $0.failure = failure }
+    }
+
+    /// Record what to keep, the whole scene (`nil`) or one object: the
+    /// capture no longer waits to be told.
+    func saveSubject(_ subject: ObjectPick?) throws {
+        try update {
+            $0.subject = subject
+            $0.choice = nil
+        }
+    }
+
+    /// Record that the capture waits to be told what to keep.
+    func saveChoicePending() throws {
+        try update { $0.choice = .pending }
     }
 
     /// Change the kept run, if there is one.

@@ -21,6 +21,16 @@ import Splat3D
 // picks up by itself on the next launch, through
 // client.resume(sceneID:preset:…). A run that had failed comes back failed.
 //
+// With masking switched on (SPLAT_MASKING), Stop saves the capture
+// and asks what to keep before anything is sent:
+//
+//   scanning ── Stop ──> captured ── Upload whole scene ──────────> running
+//                           │  ▲                                     ▲
+//           Mask an object │  │ Choose again (from failed)          │
+//                           ▼  │                                     │
+//                     ObjectPickView ── Upload masked scan ──────────┘
+//                                       createAndProcess(subject:)
+//
 // Leaving the app asks iOS for background time. When it runs out the run is
 // cancelled, which the SDK reports as an interruption, and it resumes by
 // itself when the app is back in front.
@@ -30,6 +40,9 @@ import Splat3D
 enum CaptureState {
     case idle
     case scanning
+    /// The capture is saved and waits to be told what to keep: the whole
+    /// scene or one object. Only with masking switched on.
+    case captured
     case running(RunProgress)
     case paused(PausedRun)
     case failed(FailedRun)
@@ -102,6 +115,9 @@ struct FailedRun: Codable, Equatable {
         case uploadAgain
         /// The scene failed or is gone: process the saved capture as a new scene.
         case processAgain
+        /// A masked scan didn't go through: back to the saved capture, to
+        /// pick the object again or upload the whole scene.
+        case chooseAgain
     }
 
     /// What becomes of the scene when the capture is dropped.
@@ -118,7 +134,7 @@ struct FailedRun: Codable, Equatable {
     /// What was charged, when that is known.
     let charges: String?
     let sceneID: String?
-    let retry: Retry
+    var retry: Retry
     var leftoverScene = LeftoverScene.keep
 }
 
@@ -201,6 +217,13 @@ final class CaptureModel: ObservableObject {
     /// Exposed so the scanning view can attach an ARSCNView to the session.
     var arSession: ARSession? { scanner.session }
 
+    /// The saved capture's video, for the object picker.
+    var captureVideoURL: URL { store.videoURL }
+
+    /// The object picked for the saved capture, if it was a masked scan:
+    /// where the picker starts when it opens again.
+    var savedPick: ObjectPick? { store.loadRun()?.subject }
+
     // MARK: - Splat3D Integration: Client & Scanner Setup
     private let client: SplatClient?
     private let scanner = SplatScanner()
@@ -252,13 +275,17 @@ final class CaptureModel: ObservableObject {
         // again as it was.
         let state: CaptureState = run.map { run -> CaptureState in
             guard let failure = run.failure else {
+                // Killed before saying what to keep: ask again, send nothing.
+                if run.choice == .pending {
+                    return .captured
+                }
                 return .paused(PausedRun(sceneID: run.sceneID, phase: nil, cause: .appClosed, interruption: nil))
             }
             return .failed(failure)
         } ?? .idle
 
         self.init(
-            client: apiKey.map { SplatClient(apiKey: $0, session: session) },
+            client: apiKey.map { makeSplatClient(apiKey: $0, session: session) },
             hasAPIKey: apiKey != nil,
             hasLiDAR: ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh),
             cameraAccess: AVCaptureDevice.authorizationStatus(for: .video),
@@ -365,6 +392,7 @@ final class CaptureModel: ObservableObject {
     }
 
     /// Stop recording, keep the capture on disk, then upload and process it.
+    /// With masking switched on, it asks what to keep before uploading.
     func stopAndUpload(preset: ScenePreset) async {
         stopScanTimers()
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -388,7 +416,68 @@ final class CaptureModel: ObservableObject {
             fail(FailedRun(title: "Couldn't save the capture", detail: error.localizedDescription, charges: "Nothing was sent or charged.", sceneID: nil, retry: .impossible))
             return
         }
+
+        guard maskingEnabled else {
+            uploadSavedCapture()
+            return
+        }
+        awaitChoice()
+    }
+
+    // MARK: - Splat3D Integration: Masking
+    //
+    // The saved capture waits on the captured screen. Upload whole scene
+    // sends it as before. Mask an object opens ObjectPickView, whose pick
+    // is saved with the run, so Upload again and a resume after a relaunch
+    // send the same object.
+
+    /// Show the captured screen, and remember that the capture waits there.
+    private func awaitChoice() {
+        try? store.saveChoicePending()
+        state = .captured
+    }
+
+    /// Upload the saved capture: the whole scene, or with a `pick`, the one
+    /// object it names.
+    func upload(keeping pick: ObjectPick?) {
+        guard case .captured = state else {
+            return
+        }
+        do {
+            try store.saveSubject(pick)
+        } catch {
+            // Uploading anyway would send the whole scene for a masked scan.
+            fail(FailedRun(title: "Couldn't save your choice", detail: error.localizedDescription, charges: "Nothing was sent or charged.", sceneID: nil, retry: .chooseAgain))
+            return
+        }
         uploadSavedCapture()
+    }
+
+    /// A masked scan didn't go through: back to the captured screen, to
+    /// pick the object again or upload the whole scene.
+    func chooseAgain() {
+        guard case .failed(let failed) = state else {
+            return
+        }
+        if failed.leftoverScene == .delete, let scene = failed.sceneID {
+            deleteUnlaunched(scene)
+        }
+        sceneID = nil
+        try? store.saveSceneID(nil)
+        try? store.saveFailure(nil)
+        awaitChoice()
+    }
+
+    /// A failed masked scan gets its choice back. Process again would send
+    /// the same points, which is what failed when the pipeline couldn't find
+    /// the object at them.
+    private func offeringChoice(_ failed: FailedRun) -> FailedRun {
+        guard failed.retry == .processAgain, savedPick != nil else {
+            return failed
+        }
+        var failed = failed
+        failed.retry = .chooseAgain
+        return failed
     }
 
     /// Stop recording and throw the scan away: nothing is saved or sent.
@@ -427,11 +516,13 @@ final class CaptureModel: ObservableObject {
         // createAndProcess creates the scene, uploads the video, launches
         // processing and polls until it finishes. The poses and points
         // come back from disk, so a resume after a relaunch sends exactly
-        // the same launch.
+        // the same launch. A subject makes it a masked scan: the scene
+        // keeps it, so resume doesn't send it again.
         try await client.createAndProcess(
             videoURL: store.videoURL,
             title: run.title,
             preset: run.preset.params,
+            subject: run.subject?.sceneSubject(),
             arkitPoses: launch.poses,
             lidarPoints: launch.lidarPoints,
             onProgress: { [weak self] status, percent in
@@ -703,7 +794,7 @@ final class CaptureModel: ObservableObject {
                 return
             }
         case .failed(let failed):
-            fail(failed)
+            fail(offeringChoice(failed))
             return
         }
         UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -917,6 +1008,8 @@ enum RunOutcome {
         static let sourceMissing = "source_missing"
         static let sourceUnusable = "source_unusable"
         static let conflict = "conflict"
+        /// Create's 403 for a subject where masking is switched off.
+        static let featureDisabled = "feature_disabled"
     }
 
     /// processScene's message when the video never landed, from servers that
@@ -1017,6 +1110,14 @@ enum RunOutcome {
                 charges: "Nothing was charged.",
                 sceneID: sceneID,
                 retry: .uploadAgain
+            )
+        case SplatError.requestFailed(let refusal) where refusal.code == Code.featureDisabled:
+            return FailedRun(
+                title: "Masking isn't switched on",
+                detail: "This API doesn't do masking yet. Upload the whole scene instead.",
+                charges: "Nothing was created or charged.",
+                sceneID: sceneID,
+                retry: .chooseAgain
             )
         case SplatError.requestFailed(let refusal) where refusal.statusCode == forbidden && refusal.code == nil:
             return FailedRun(

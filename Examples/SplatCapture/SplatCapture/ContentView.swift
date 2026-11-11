@@ -8,6 +8,8 @@ import Splat3D
 // 1. Your API key is read at runtime from the SPLAT_API_KEY build setting.
 //    Copy Secrets.example.xcconfig to Secrets.xcconfig (git ignores it) and set
 //    it there. Never put a key in source: this repository is public.
+//    SPLAT_API_HOST and SPLAT_MASKING, in SplatCapture.xcconfig, point a
+//    build at another API and switch on masking.
 // 2. The SDK entry points used in this app:
 //    - SplatScanner  — captures video + ARKit poses (CaptureModel.swift)
 //    - SplatClient   — uploads and processes via the Splat API, resumes an
@@ -17,6 +19,8 @@ import Splat3D
 //                      their SPZ (SceneViewer.swift)
 //    - ARKitPose     — pose format sent to the API (handled internally by
 //                      SplatScanner, and saved by CaptureStore.swift)
+//    - SceneSubject  — the one object a masked scan keeps, picked in
+//                      ObjectPickView.swift
 // 3. SplatKit (github.com/Xget7/splatkit-ios, MIT) draws the downloaded scene
 //    natively: see SplatWorldView.swift.
 
@@ -29,6 +33,34 @@ let apiKey: String? = {
     }
     return key
 }()
+
+/// The API this build talks to, when the `SPLAT_API_HOST` build setting names
+/// a host, through the `SplatAPIHost` Info.plist entry. `nil`, the default,
+/// is the SDK's own: production.
+let apiBaseURL: URL? = {
+    guard let host = Bundle.main.object(forInfoDictionaryKey: "SplatAPIHost") as? String, !host.isEmpty else {
+        return nil
+    }
+    return URL(string: "https://\(host)")
+}()
+
+/// A build setting that is switched on, as an xcconfig writes it.
+private let buildSettingOn = "YES"
+
+/// Whether "Mask an object" is offered after a recording: the
+/// `SPLAT_MASKING` build setting, through the `SplatMasking`
+/// Info.plist entry. On by default: the production API does masking. An API
+/// with it switched off refuses with 403 `feature_disabled`.
+let maskingEnabled = Bundle.main.object(forInfoDictionaryKey: "SplatMasking") as? String == buildSettingOn
+
+/// A client for this build's API: production, unless `SPLAT_API_HOST` names
+/// another.
+func makeSplatClient(apiKey: String, session: URLSession = .shared) -> SplatClient {
+    guard let apiBaseURL else {
+        return SplatClient(apiKey: apiKey, session: session)
+    }
+    return SplatClient(apiKey: apiKey, baseURL: apiBaseURL, session: session)
+}
 
 /// What to do when no key is set, under a title that says so.
 let missingAPIKeyMessage = """
@@ -254,6 +286,13 @@ struct CaptureRoot: View {
         switch model.state {
         case .idle, .scanning:
             HomeView(model: model, preset: $preset)
+        case .captured:
+            CapturedView(
+                videoURL: model.captureVideoURL,
+                previousPick: model.savedPick,
+                onUpload: { model.upload(keeping: $0) },
+                onDiscard: { model.discard() }
+            )
         case .running(let progress):
             RunningView(progress: progress, thumbnail: model.thumbnail, isOnline: connectivity.isOnline)
         case .paused(let paused):
@@ -268,6 +307,7 @@ struct CaptureRoot: View {
                 failed: failed,
                 onUploadAgain: { model.uploadAgain() },
                 onProcessAgain: { model.processAgain() },
+                onChooseAgain: { model.chooseAgain() },
                 onDiscard: { model.discard() }
             )
         case .complete(let scene):
@@ -583,8 +623,12 @@ struct ScanningView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// With masking switched on, Stop asks what to keep before it
+    /// uploads anything.
+    private static let stopTitle = maskingEnabled ? "Stop" : "Stop and upload"
+
     private var stopButton: some View {
-        Button("Stop and upload") {
+        Button(Self.stopTitle) {
             // The timer on screen decides: under the minimum, the API would
             // refuse the video, so ask instead of uploading.
             switch CaptureLength.stopAction(after: model.elapsed) {
