@@ -379,7 +379,7 @@ final class SceneViewerModel: ObservableObject {
         let watcher = TransferWatcher()
         let session = URLSession(configuration: .default, delegate: watcher, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
-        let client = SplatClient(apiKey: apiKey, session: session)
+        let client = makeSplatClient(apiKey: apiKey, session: session)
 
         let progress = Task { [weak self] in
             while !Task.isCancelled {

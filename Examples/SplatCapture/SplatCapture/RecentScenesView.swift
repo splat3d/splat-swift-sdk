@@ -304,7 +304,7 @@ final class RecentScenesModel: ObservableObject {
     fileprivate let thumbnails: ThumbnailStore
 
     init() {
-        let client = apiKey.map { SplatClient(apiKey: $0) }
+        let client = apiKey.map { makeSplatClient(apiKey: $0) }
         self.client = client
         thumbnails = ThumbnailStore(client: client)
     }

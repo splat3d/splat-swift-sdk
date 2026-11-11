@@ -2,6 +2,28 @@
 
 All notable changes to Splat3D. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Added
+
+- Object scans: `SceneSubject`, a moment in the video and 1 to 5 points on one
+  object, which the scene then keeps alone. Pass it as the new `subject`
+  argument of `createScene` and `createAndProcess`; `nil`, the default, makes
+  a normal scene, and existing calls compile unchanged. `SceneSubject.init`
+  throws `SceneSubject.Invalid` for a value the API would refuse, before
+  anything is sent.
+- Object scans are not enabled in production yet: a create with a subject
+  throws `SplatError.requestFailed` with status 403 and code
+  `feature_disabled`.
+
+### Changed
+
+- The full names of two methods gained `subject:`:
+  `createScene(title:preset:subject:)` and
+  `createAndProcess(videoURL:title:preset:subject:arkitPoses:lidarPoints:onProgress:onSceneCreated:)`.
+  Calls are unaffected. A reference to the method by its full name, such as
+  `client.createScene(title:preset:)`, needs the new name.
+
 ## 1.1.0
 
 ### Added

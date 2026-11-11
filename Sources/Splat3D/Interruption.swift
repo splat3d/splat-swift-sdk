@@ -4,7 +4,7 @@ import Foundation
 
 extension SplatError {
 
-    /// Where ``SplatClient/createAndProcess(videoURL:title:preset:arkitPoses:lidarPoints:onProgress:onSceneCreated:)``
+    /// Where ``SplatClient/createAndProcess(videoURL:title:preset:subject:arkitPoses:lidarPoints:onProgress:onSceneCreated:)``
     /// stopped before its outcome was known. Continue it with
     /// ``SplatClient/resume(_:onProgress:)``.
     ///

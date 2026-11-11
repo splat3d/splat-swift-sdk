@@ -84,6 +84,45 @@ the scene and says it can't draw it.
 and preset. A complete one opens in 3D. Swipe or long-press a row to delete
 it.
 
+## Object scans
+
+An object scan keeps one object instead of everything the camera saw. The
+option is off by default, because the production API answers 403
+`feature_disabled` until object scans are switched on there. To try it
+against an API that has them, set two build settings in `Secrets.xcconfig`,
+beside a key that API accepts:
+
+```
+SPLAT_OBJECT_SCAN = YES
+SPLAT_API_HOST = api.example.com
+```
+
+`SPLAT_API_HOST` is the host alone: an xcconfig reads `//` as the start of a
+comment, so the app adds `https://` itself. Leave it out to stay on
+production.
+
+With the option on, **Stop** saves the capture and asks what to keep, before
+anything is sent:
+
+1. **Upload whole scene** uploads as before
+2. **Scan one object** opens the recorded video. Scrub to a frame that shows
+   the object and tap it, up to 5 times, all on the same object. **Undo**
+   removes the last point and **Clear** all of them. Moving the scrubber
+   clears them too: the points belong to one frame
+3. **Upload object scan** sends the capture with a `SceneSubject`: the
+   player's time and the points
+
+Each point is a fraction of the video as displayed, from its top-left
+corner: the track's `preferredTransform` applied, and measured inside the
+picture, not the letterbox bars. `PickGeometry/PickGeometry.swift` holds that
+math as pure functions, and `swift test` at the repository root runs
+`PickGeometryTests.swift` beside it.
+
+If the API refuses the object scan, or the pipeline can't find the object,
+the failed screen offers **Choose again**: back to the saved capture, to pick
+again or upload the whole scene. The pick is saved with the capture, so
+**Upload again** and a resume after a relaunch send the same object.
+
 ## When a run stops
 
 The app reads every error from `createAndProcess` the way the SDK's README
@@ -205,6 +244,8 @@ This app demonstrates these Splat3D APIs:
   (Resume) or failed (what next).
 - **`ARKitPose`** — the pose format sent to the API. Each pose includes the 4x4
   camera transform, 3x3 intrinsics, image dimensions, and a filename.
+- **`SceneSubject`** — the one object an object scan keeps, passed to
+  `createAndProcess(subject:)`. Behind the `SPLAT_OBJECT_SCAN` build setting.
 - **`SplatClient.listScenePage()`** — the Scenes list.
 - **`SplatClient.getSceneThumbnail(id:)`** — the list's thumbnails, and the
   progress and complete screens' preview. It sends the API key, which a
@@ -224,6 +265,8 @@ Key sections are marked with `// MARK: - Splat3D Integration` comments:
 | `CaptureStore.swift` | The capture on disk, for resuming after a relaunch |
 | `ContentView.swift` | Start screen, camera view, navigation |
 | `RunViews.swift` | Progress, paused, failed and complete screens |
+| `ObjectPickView.swift` | Object scans: the captured screen and the picker |
+| `../PickGeometry/PickGeometry.swift` | A tap as a fraction of the displayed video, with its tests |
 | `RecentScenesView.swift` | Scenes: list, thumbnails, delete |
 | `SceneViewer.swift`, `SplatWorldView.swift` | The 3D viewer |
 | `SceneInfo.swift` | The viewer's info sheet, and how scene facts are written |

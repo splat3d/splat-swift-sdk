@@ -25,5 +25,11 @@ let package = Package(
             path: "Tests/Splat3DTests",
             resources: [.copy("Fixtures")]
         ),
+        // The example app's tap-to-point math and its tests. The app has no
+        // test target of its own, so `swift test` runs them from here.
+        .testTarget(
+            name: "PickGeometryTests",
+            path: "Examples/SplatCapture/PickGeometry"
+        ),
     ]
 )

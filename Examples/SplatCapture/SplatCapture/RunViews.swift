@@ -4,7 +4,7 @@ import Splat3D
 // MARK: - Run screens
 //
 // One screen per CaptureState after the scan: running, paused, failed and
-// complete.
+// complete. Captured, which object scans add, is in ObjectPickView.swift.
 
 /// Where to add credits: the billing page of the Splat3D dashboard.
 let billingURL = URL(string: "https://splat-3d.com/dashboard/settings/billing")!
@@ -469,6 +469,7 @@ struct FailedView: View {
     let failed: FailedRun
     let onUploadAgain: () -> Void
     let onProcessAgain: () -> Void
+    let onChooseAgain: () -> Void
     let onDiscard: () -> Void
 
     @State private var confirmingDiscard = false
@@ -492,6 +493,10 @@ struct FailedView: View {
                 Button("Process again", action: onProcessAgain)
                     .actionStyle(.primary)
                 ActionNote("Creates a new scene from the saved capture, and charges it.")
+            case .chooseAgain:
+                Button("Choose again", action: onChooseAgain)
+                    .actionStyle(.primary)
+                ActionNote("Back to the saved capture: pick the object again, or upload the whole scene.")
             case .impossible:
                 EmptyView()
             }

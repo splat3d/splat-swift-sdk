@@ -65,7 +65,7 @@ public enum SplatError: Error, LocalizedError, Sendable {
     /// call went through. There is no job to wait for.
     case notStarted
 
-    /// ``SplatClient/createAndProcess(videoURL:title:preset:arkitPoses:lidarPoints:onProgress:onSceneCreated:)``
+    /// ``SplatClient/createAndProcess(videoURL:title:preset:subject:arkitPoses:lidarPoints:onProgress:onSceneCreated:)``
     /// stopped after creating its scene, before the outcome was known.
     /// Continue with ``SplatClient/resume(_:onProgress:)``; the
     /// ``Interruption`` says which step stopped and what was charged.
@@ -135,7 +135,9 @@ extension SplatError {
         /// The API's machine-readable error code: `invalid_input`,
         /// `unauthorized`, `forbidden`, `not_found`, `conflict`,
         /// `payload_too_large`, `insufficient_credits`, `rate_limited`,
-        /// `quota_exceeded`, `internal_error` or `upstream_error`.
+        /// `quota_exceeded`, `internal_error`, `upstream_error` or
+        /// `feature_disabled` (403: a ``SceneSubject`` where object scans
+        /// are switched off).
         ///
         /// `nil` when the body was not an API error envelope: a request that
         /// failed schema validation, an edge rate limit, or a storage upload

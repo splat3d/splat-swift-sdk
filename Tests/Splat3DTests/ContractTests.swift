@@ -19,7 +19,7 @@ final class ContractTests: XCTestCase {
 
     /// Every operation in the pinned spec and the SplatClient method covering it.
     static let coverage: [String: String] = [
-        "createScene": "createScene(title:preset:)",
+        "createScene": "createScene(title:preset:subject:)",
         "listScenes": "listScenePage(cursor:limit:), allScenes(pageSize:)",
         "getScene": "getScene(id:)",
         "updateScene": "updateScene(id:_:)",

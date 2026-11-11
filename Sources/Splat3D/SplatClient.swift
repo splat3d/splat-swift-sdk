@@ -282,20 +282,27 @@ public final class SplatClient: Sendable {
     /// - Parameters:
     ///   - title: Optional title for the scene.
     ///   - preset: Processing quality preset. Defaults to `.standard`.
+    ///   - subject: The one object to keep, for an object scan. `nil`, the
+    ///     default, makes a normal scene.
     /// - Returns: A tuple of the created scene's ID and a presigned upload URL.
-    /// - Throws: ``SplatError`` on network or API errors.
+    /// - Throws: ``SplatError`` on network or API errors, and
+    ///   ``SplatError/requestFailed(_:)`` with status 403 and code
+    ///   `feature_disabled` for a `subject` where object scans are off.
     public func createScene(
         title: String? = nil,
-        preset: SceneParams = .standard
+        preset: SceneParams = .standard,
+        subject: SceneSubject? = nil
     ) async throws -> (sceneID: String, uploadURL: URL) {
         struct Body: Encodable {
             let title: String?
             let preset: String
             let enableLod: Bool?
             let contentType: String
+            /// Left out when `nil`: the API then makes a normal scene.
+            let subject: SubjectBody?
 
             enum CodingKeys: String, CodingKey {
-                case title, preset
+                case title, preset, subject
                 case enableLod = "enable_lod"
                 case contentType = "content_type"
             }
@@ -305,7 +312,8 @@ public final class SplatClient: Sendable {
             title: title,
             preset: preset.preset.rawValue,
             enableLod: preset.enableLOD ? true : nil,
-            contentType: "video/mp4"
+            contentType: "video/mp4",
+            subject: subject.map(SubjectBody.init)
         )
 
         let result: CreateSceneData = try await api.request(
@@ -326,7 +334,7 @@ public final class SplatClient: Sendable {
     ///
     /// - Parameters:
     ///   - fileURL: Local file URL of the video to upload.
-    ///   - uploadURL: Presigned upload URL from ``createScene(title:preset:)``.
+    ///   - uploadURL: Presigned upload URL from ``createScene(title:preset:subject:)``.
     /// - Throws: ``SplatError/uploadFailed(_:)`` on upload failure, and before
     ///   sending anything when the file is missing, unreadable, a folder or
     ///   empty: URLSession would send those as an empty body, which storage
@@ -727,13 +735,19 @@ public final class SplatClient: Sendable {
     ///   - videoURL: Local file URL of the video to upload.
     ///   - title: Optional title for the scene.
     ///   - preset: Processing quality preset. Defaults to `.standard`.
+    ///   - subject: The one object to keep, for an object scan. `nil`, the
+    ///     default, makes a normal scene. The scene keeps it, so neither
+    ///     `resume` takes it.
     ///   - arkitPoses: Optional ARKit camera poses to skip SfM.
     ///   - lidarPoints: Optional LiDAR points from ``SplatScanner``.
     ///   - onProgress: Optional callback, on the main actor, for status updates.
     ///   - onSceneCreated: Optional callback, on the main actor, with the new
     ///     scene's ID as soon as it exists, before the upload.
     /// - Returns: The completed scene.
-    /// - Throws: The creation error if the scene could not be created. If the
+    /// - Throws: The creation error if the scene could not be created, e.g.
+    ///           ``SplatError/requestFailed(_:)`` with status 403 and code
+    ///           `feature_disabled` for a `subject` where object scans are
+    ///           off: nothing was created or charged. If the
     ///           task is cancelled while the scene is being created, a plain
     ///           `CancellationError`: the API may have created it anyway, and
     ///           ``allScenes(pageSize:)`` lists it. Afterwards,
@@ -742,6 +756,7 @@ public final class SplatClient: Sendable {
         videoURL: URL,
         title: String? = nil,
         preset: SceneParams = .standard,
+        subject: SceneSubject? = nil,
         arkitPoses: [ARKitPose]? = nil,
         lidarPoints: [[Float]]? = nil,
         onProgress: (@MainActor @Sendable (SceneStatus, Double?) -> Void)? = nil,
@@ -751,7 +766,7 @@ public final class SplatClient: Sendable {
         try APIClient.checkUploadable(videoURL)
 
         // 1. Create scene
-        let (sceneID, uploadURL) = try await createScene(title: title, preset: preset)
+        let (sceneID, uploadURL) = try await createScene(title: title, preset: preset, subject: subject)
         await onSceneCreated?(sceneID)
 
         // 2–4. Upload, launch and wait, recording what resume would repeat.

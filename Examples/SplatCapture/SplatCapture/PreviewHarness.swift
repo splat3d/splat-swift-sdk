@@ -31,11 +31,13 @@ struct PreviewHarness: View {
         "home", "home-first-run", "home-no-lidar", "home-camera-off", "home-no-key", "home-deleted",
         "home-accessibility",
         "scanning", "scanning-limited", "scanning-bright",
+        "captured",
         "saving", "uploading", "launching", "processing", "processing-unknown", "processing-offline",
         "processing-accessibility",
         "paused-connection", "paused-background", "paused-app-closed", "paused-not-created",
         "paused-credits", "paused-queue", "paused-quota", "paused-timeout",
         "failed-processing", "failed-upload-lost", "failed-cancelled", "failed-unusable",
+        "failed-object-scan-off",
         "complete", "complete-delete-error",
         "scenes", "scenes-empty", "scenes-error",
         "viewer-downloading", "viewer-undrawable", "viewer-no-spz", "viewer-orbit", "viewer-look",
@@ -169,6 +171,8 @@ struct PreviewHarness: View {
             return .preview(.scanning, .init(scanning: (poses: 126, frames: 1_260, elapsed: 42, tracking: TrackingStatus(text: "Tracking well", dot: .done))))
         case "scanning-limited":
             return .preview(.scanning, .init(scanning: (poses: 31, frames: 310, elapsed: 11, tracking: TrackingStatus(text: "Slow down", dot: .waiting))))
+        case "captured":
+            return .preview(.captured)
         case "saving":
             return .preview(.running(RunProgress(step: .saving)))
         case "uploading":
@@ -208,6 +212,9 @@ struct PreviewHarness: View {
         case "failed-unusable":
             let unusable = refusal(422, "source_unusable", "The uploaded file is empty.")
             return .preview(outcome(interruption(.launch, SplatError.requestFailed(unusable))))
+        case "failed-object-scan-off":
+            let disabled = refusal(403, "feature_disabled", "Object scans are not available.")
+            return .preview(outcome(SplatError.requestFailed(disabled), sceneID: nil))
         case "complete":
             return .preview(.complete(scene))
         case "complete-delete-error":
